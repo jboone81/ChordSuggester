@@ -220,6 +220,7 @@ void ChordSuggesterAudioProcessorEditor::setCurrentChord (const chords::Chord& n
 
     currentChord = chosen;
     previewedChord.reset();
+    dropMessage.clear();
     suggestions = chords::suggest (currentChord, keyRoot);
     repaint();
 }
@@ -298,10 +299,10 @@ void ChordSuggesterAudioProcessorEditor::paint (juce::Graphics& g)
                 juce::Justification::centredLeft);
 
     const auto current = currentChordBounds();
-    g.setColour (juce::Colour (0xff222630));
+    g.setColour (midiDragHovering ? juce::Colour (0xff253348) : juce::Colour (0xff222630));
     g.fillRoundedRectangle (current.toFloat(), 13.0f);
-    g.setColour (juce::Colour (0xff444c5c));
-    g.drawRoundedRectangle (current.toFloat(), 13.0f, 1.5f);
+    g.setColour (midiDragHovering ? accentBlue : juce::Colour (0xff444c5c));
+    g.drawRoundedRectangle (current.toFloat(), 13.0f, midiDragHovering ? 2.5f : 1.5f);
     g.setColour (juce::Colour (0xfff1f3f6));
     g.setFont (juce::FontOptions (44.0f).withStyle ("Bold"));
     g.drawText (currentChord.name, current.withTrimmedTop (28).withHeight (56),
@@ -311,7 +312,10 @@ void ChordSuggesterAudioProcessorEditor::paint (juce::Graphics& g)
                 juce::Justification::centred);
     g.setColour (secondaryText);
     g.setFont (juce::FontOptions (14.0f));
-    g.drawText ("Click to replay", current.withTrimmedTop (120).withHeight (22),
+    const auto currentChordHint = midiDragHovering ? juce::String ("Drop to use this clip's first chord")
+                                : dropMessage.isNotEmpty() ? dropMessage
+                                : juce::String::fromUTF8 ("Click to replay \xc2\xb7 or drop a MIDI clip here");
+    g.drawText (currentChordHint, current.withTrimmedTop (120).withHeight (22).reduced (10, 0),
                 juce::Justification::centred);
 
     const auto transition = transitionBounds();
@@ -493,4 +497,69 @@ void ChordSuggesterAudioProcessorEditor::mouseExit (const juce::MouseEvent&)
         hoveredRow = -1;
         repaint();
     }
+}
+
+//==============================================================================
+// Dropping a MIDI file on the window
+
+namespace
+{
+bool isMidiFile (const juce::String& path)
+{
+    return juce::File (path).hasFileExtension ("mid;midi");
+}
+}
+
+bool ChordSuggesterAudioProcessorEditor::isInterestedInFileDrag (const juce::StringArray& files)
+{
+    for (const auto& path : files)
+        if (isMidiFile (path))
+            return true;
+
+    return false;
+}
+
+void ChordSuggesterAudioProcessorEditor::fileDragEnter (const juce::StringArray&, int, int)
+{
+    midiDragHovering = true;
+    repaint();
+}
+
+void ChordSuggesterAudioProcessorEditor::fileDragExit (const juce::StringArray&)
+{
+    midiDragHovering = false;
+    repaint();
+}
+
+void ChordSuggesterAudioProcessorEditor::filesDropped (const juce::StringArray& files, int, int)
+{
+    midiDragHovering = false;
+
+    for (const auto& path : files)
+    {
+        if (! isMidiFile (path))
+            continue;
+
+        const juce::File file (path);
+        chords::Chord dropped;
+
+        if (midi_reader::chordFromMidiFile (file, keyRoot, dropped))
+        {
+            setCurrentChord (dropped);
+
+            // Play it and light up the keyboard, the same as clicking "Your chord".
+            midiKeyboard.showChordPlayback (currentChord.notes);
+            audioProcessor.previewChord (currentChord);
+
+            dropMessage = "From " + file.getFileName();
+        }
+        else
+        {
+            dropMessage = "No chord found in " + file.getFileName();
+        }
+
+        break;   // only the first MIDI file is used
+    }
+
+    repaint();
 }

@@ -168,6 +168,51 @@ inline Chord chordFromDataState (int state, int keyRoot)
     return c;
 }
 
+// Works out which chord a group of notes makes. The notes can be MIDI note numbers
+// (60 = middle C) or plain note numbers 0-11, in any order, with repeats.
+//
+// Returns true and fills in `result` if the notes contain a major, minor or
+// diminished chord. Extra notes such as a 7th are ignored. Returns false if not.
+inline bool chordFromNotes (const std::vector<int>& notes, int keyRoot, Chord& result)
+{
+    if (notes.empty())
+        return false;
+
+    bool present[12] = {};
+    for (int note : notes)
+        present[((note % 12) + 12) % 12] = true;
+
+    const int lowest = *std::min_element (notes.begin(), notes.end());
+    const int bass = ((lowest % 12) + 12) % 12;
+
+    // Try the lowest note as the chord's root first, since that is the usual case,
+    // then every other note. This is what lets C-E-G-A read as C and A-C-E-G as Am.
+    for (int attempt = 0; attempt < 12; ++attempt)
+    {
+        const int root = (bass + attempt) % 12;
+        if (! present[root])
+            continue;
+
+        const bool majorThird = present[(root + 4) % 12];
+        const bool minorThird = present[(root + 3) % 12];
+        const bool fifth      = present[(root + 7) % 12];
+        const bool flatFifth  = present[(root + 6) % 12];
+
+        int type = -1;
+        if (majorThird && fifth)          type = 0;
+        else if (minorThird && fifth)     type = 1;
+        else if (minorThird && flatFifth) type = 2;
+
+        if (type >= 0)
+        {
+            result = chordFromDataState (data::stateOf (root - keyRoot, type), keyRoot);
+            return true;
+        }
+    }
+
+    return false;
+}
+
 // If real songs rarely use a chord, there isn't enough evidence to go on.
 static constexpr int minimumTimesSeenInData = 100;
 

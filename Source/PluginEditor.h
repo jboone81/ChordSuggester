@@ -11,6 +11,7 @@
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
 #include "ChordEngine.h"
+#include "MidiChordReader.h"
 #include <optional>
 
 class ChordMidiKeyboard final : public juce::MidiKeyboardComponent
@@ -54,7 +55,8 @@ private:
 //==============================================================================
 /**
 */
-class ChordSuggesterAudioProcessorEditor  : public juce::AudioProcessorEditor
+class ChordSuggesterAudioProcessorEditor  : public juce::AudioProcessorEditor,
+                                            public juce::FileDragAndDropTarget
 {
 public:
     ChordSuggesterAudioProcessorEditor (ChordSuggesterAudioProcessor&);
@@ -68,6 +70,13 @@ public:
     void mouseDoubleClick (const juce::MouseEvent&) override;
     void mouseMove (const juce::MouseEvent&) override;
     void mouseExit (const juce::MouseEvent&) override;
+
+    // Dropping a MIDI file (.mid) anywhere on the window sets "Your chord" to the
+    // first chord in that file.
+    bool isInterestedInFileDrag (const juce::StringArray& files) override;
+    void fileDragEnter (const juce::StringArray& files, int x, int y) override;
+    void fileDragExit (const juce::StringArray& files) override;
+    void filesDropped (const juce::StringArray& files, int x, int y) override;
 
 private:
     void updateKeySelection();
@@ -95,6 +104,8 @@ private:
     std::vector<chords::Suggestion> suggestions;
     std::optional<chords::Chord> previewedChord;
     int hoveredRow = -1;
+    bool midiDragHovering = false;   // true while a MIDI file is being dragged over the window
+    juce::String dropMessage;        // shown under the chord after a drop, e.g. "From clip.mid"
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ChordSuggesterAudioProcessorEditor)
 };
