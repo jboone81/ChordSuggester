@@ -8,7 +8,7 @@ An audio plugin that suggests which chord to play next, for people who don't kno
 - Double-click a recommendation to select it as the current chord and get fresh recommendations, without restarting the preview.
 - Click the current chord to replay it.
 - The small **Preview next** panel shows the current chord followed by the previewed chord. Click it to hear both chords back-to-back, one second each, without changing your selection. It is inactive until you preview a recommendation.
-- Drag a MIDI file (`.mid`) onto the plugin window to set the current chord. The plugin reads the first chord in the file (major, minor or diminished; extra notes such as a 7th are ignored) and plays it. If it can't find a chord, it says so under the current chord.
+- Drag a MIDI file (`.mid`) or a Studio One Musicloop (`.musicloop`) onto the plugin window to set the current chord. The plugin reads the first chord in the file (major, minor or diminished; extra notes such as a 7th are ignored) plays it, and lists the notes it read under the current chord. If those notes don't make a chord, or the file has no notes, it says so there instead.
 - Choose a major key from the header to refresh the recommendations for that key.
 - Play notes on the on-screen MIDI keyboard with the mouse. It sends MIDI through the plugin; to hear those notes, route the plugin's MIDI output to an instrument in your host.
 
@@ -63,7 +63,7 @@ These check simultaneous notes and root-position voicing, preview/transition dur
 - `CMakeLists.txt`: the build settings (plugin name, formats, MIDI options).
 - `Source/ChordEngine.h`: the chord logic. Plain C++ with no JUCE, so it can be tested on its own. The `dataWeight` setting in `suggest` controls the mix: 0 is theory only, 1 is data only.
 - `Source/ChordTransitions.h`: how often each chord follows each other chord in real songs. Generated, so don't edit it by hand.
-- `Source/MidiChordReader.h`: reads a MIDI file and finds its first chord.
+- `Source/MidiChordReader.h`: reads a MIDI file or a Studio One Musicloop and finds its first chord.
 - `Source/PluginEditor.*`: the plugin window.
 - `Source/PluginProcessor.*`: notes in and out of the DAW.
 - `tools/build_chord_table.py`: the script that generates `ChordTransitions.h` from the dataset.

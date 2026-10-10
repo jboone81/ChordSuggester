@@ -504,9 +504,36 @@ void ChordSuggesterAudioProcessorEditor::mouseExit (const juce::MouseEvent&)
 
 namespace
 {
+// MIDI files (.mid) and Studio One Musicloops (.musicloop).
 bool isMidiFile (const juce::String& path)
 {
-    return juce::File (path).hasFileExtension ("mid;midi");
+    return midi_reader::canRead (juce::File (path));
+}
+
+// The different notes in a group, lowest first, as text with a dot between each one.
+// A note played in more than one octave is only listed once.
+juce::String playedNoteNames (std::vector<int> notes, bool useFlats)
+{
+    std::sort (notes.begin(), notes.end());
+
+    juce::String result;
+    bool listed[12] = {};
+
+    for (int note : notes)
+    {
+        const int pitch = ((note % 12) + 12) % 12;
+        if (listed[pitch])
+            continue;
+
+        listed[pitch] = true;
+
+        if (result.isNotEmpty())
+            result += juce::String::fromUTF8 (" \xc2\xb7 ");
+
+        result += juce::String::fromUTF8 (chords::noteName (pitch, useFlats).c_str());
+    }
+
+    return result;
 }
 }
 
@@ -541,9 +568,11 @@ void ChordSuggesterAudioProcessorEditor::filesDropped (const juce::StringArray& 
             continue;
 
         const juce::File file (path);
+        const std::vector<int> played = midi_reader::firstChordNotes (file);
+        const bool keyUsesFlats = keyRoot == 1 || keyRoot == 3 || keyRoot == 5 || keyRoot == 8 || keyRoot == 10;
         chords::Chord dropped;
 
-        if (midi_reader::chordFromMidiFile (file, keyRoot, dropped))
+        if (chords::chordFromNotes (played, keyRoot, dropped))
         {
             setCurrentChord (dropped);
 
@@ -551,11 +580,18 @@ void ChordSuggesterAudioProcessorEditor::filesDropped (const juce::StringArray& 
             midiKeyboard.showChordPlayback (currentChord.notes);
             audioProcessor.previewChord (currentChord);
 
-            dropMessage = "From " + file.getFileName();
+            // Spell the notes to match the chord's name: flats for "Ab minor", sharps for "F# major".
+            const juce::String name (dropped.name);
+            const bool useFlats = name.substring (1, 2) == "b" || (keyUsesFlats && name.substring (1, 2) != "#");
+            dropMessage = "Notes played: " + playedNoteNames (played, useFlats);
+        }
+        else if (played.empty())
+        {
+            dropMessage = "No notes found in " + file.getFileName();
         }
         else
         {
-            dropMessage = "No chord found in " + file.getFileName();
+            dropMessage = "No chord in these notes: " + playedNoteNames (played, keyUsesFlats);
         }
 
         break;   // only the first MIDI file is used

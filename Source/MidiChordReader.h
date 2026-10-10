@@ -4,9 +4,14 @@
 // Reads a MIDI file (for example a clip dragged out of a DAW) and works out the
 // first chord in it. This is the only part of the chord logic that needs JUCE,
 // because JUCE does the MIDI file reading.
+//
+// It accepts:
+//   - plain MIDI files (.mid, .midi)
+//   - Studio One Musicloops (.musicloop), which are packages with a MIDI file inside
 
 #include <JuceHeader.h>
 #include <algorithm>
+#include <memory>
 #include <vector>
 
 #include "ChordEngine.h"
@@ -14,14 +19,16 @@
 namespace midi_reader
 {
 
-// The notes of the first chord in a MIDI file, as MIDI note numbers (60 = middle C).
-// Returns an empty list if the file can't be read or has no notes in it.
-inline std::vector<int> firstChordNotes (const juce::File& file)
+// The file types the plugin will take when something is dropped on it.
+inline bool canRead (const juce::File& file)
 {
-    juce::FileInputStream stream (file);
-    if (! stream.openedOk())
-        return {};
+    return file.hasFileExtension ("mid;midi;musicloop");
+}
 
+// The notes of the first chord in some MIDI data, as MIDI note numbers (60 = middle C).
+// Returns an empty list if the data isn't MIDI or has no notes in it.
+inline std::vector<int> firstChordNotes (juce::InputStream& stream)
+{
     juce::MidiFile midi;
     if (! midi.readFrom (stream))
         return {};
@@ -91,7 +98,67 @@ inline std::vector<int> firstChordNotes (const juce::File& file)
     return notes;
 }
 
-// Reads a MIDI file and works out its first chord. Returns true and fills in
+// The notes of the first chord in a file, as MIDI note numbers (60 = middle C).
+// Returns an empty list if the file can't be read or has no notes in it.
+inline std::vector<int> firstChordNotes (const juce::File& file)
+{
+    const char* midiFilePattern = "*.mid;*.midi";
+
+    // A package that is really a folder: use the first MIDI file inside it.
+    if (file.isDirectory())
+    {
+        for (const auto& child : file.findChildFiles (juce::File::findFiles, true, midiFilePattern))
+        {
+            const auto notes = firstChordNotes (child);
+            if (! notes.empty())
+                return notes;
+        }
+
+        return {};
+    }
+
+    // A plain MIDI file.
+    if (file.hasFileExtension ("mid;midi"))
+    {
+        juce::FileInputStream stream (file);
+        if (! stream.openedOk())
+            return {};
+
+        return firstChordNotes (stream);
+    }
+
+    // Anything else, such as a Studio One .musicloop: a zip package with a MIDI
+    // file somewhere inside it. Use the first MIDI file found.
+    juce::ZipFile package (file);
+
+    for (int i = 0; i < package.getNumEntries(); ++i)
+    {
+        const auto* entry = package.getEntry (i);
+        if (entry == nullptr)
+            continue;
+
+        const auto name = entry->filename.toLowerCase();
+        if (! (name.endsWith (".mid") || name.endsWith (".midi")))
+            continue;
+
+        const std::unique_ptr<juce::InputStream> packed (package.createStreamForEntry (i));
+        if (packed == nullptr)
+            continue;
+
+        // Unpack it into memory first, then read it like any other MIDI file.
+        juce::MemoryBlock unpacked;
+        packed->readIntoMemoryBlock (unpacked);
+        juce::MemoryInputStream stream (unpacked, false);
+
+        const auto notes = firstChordNotes (stream);
+        if (! notes.empty())
+            return notes;
+    }
+
+    return {};
+}
+
+// Reads a file and works out its first chord. Returns true and fills in
 // `result` if it found a major, minor or diminished chord; false otherwise.
 inline bool chordFromMidiFile (const juce::File& file, int keyRoot, chords::Chord& result)
 {

@@ -71,8 +71,8 @@ public:
     void mouseMove (const juce::MouseEvent&) override;
     void mouseExit (const juce::MouseEvent&) override;
 
-    // Dropping a MIDI file (.mid) anywhere on the window sets "Your chord" to the
-    // first chord in that file.
+    // Dropping a MIDI file (.mid) or a Studio One Musicloop (.musicloop) anywhere on
+    // the window sets "Your chord" to the first chord in that file.
     bool isInterestedInFileDrag (const juce::StringArray& files) override;
     void fileDragEnter (const juce::StringArray& files, int x, int y) override;
     void fileDragExit (const juce::StringArray& files) override;
