@@ -121,6 +121,9 @@ private:
     juce::Rectangle<int> progressionBounds() const;
     void paintProgression (juce::Graphics&);
     void undoLastChord();
+    void toggleProgressionPlayback();
+    // Clears the "now playing" highlight; also silences playback when stopAudio is true.
+    void endProgressionPlayback (bool stopAudio);
     void updateCursor (juce::Point<int> position);
     void switchTab (bool melodyTab);
     void refreshMelody (bool stopPlayback = true);
@@ -156,7 +159,12 @@ private:
     juce::TextButton generateButton { "New suggestion" }, playButton { "Play" }, clearNotesButton { "Clear notes" };
     juce::TextButton backingButton { "With chords" }, loopButton { "Loop" };
     juce::TextButton resetButton { "Reset progression" };
-    juce::TextButton undoChordButton { "Undo last chord" }, resetChordsButton { "Reset" };
+    juce::TextButton undoChordButton { "Undo last" }, resetChordsButton { "Reset" };
+    juce::TextButton playProgressionButton { "Play" };
+    bool progressionPlaying = false;
+    juce::uint32 progressionStartedAt = 0;
+    size_t progressionFirst = 0, progressionCount = 0;   // which chords are playing
+    int progressionSounding = -1;                         // index into progression.all(), or -1
     juce::ComboBox scaleChoice, barsChoice, timingChoice;
     juce::TextEditor progressionDisplay;
     bool melodyPlaying = false, seenPlayhead = false;

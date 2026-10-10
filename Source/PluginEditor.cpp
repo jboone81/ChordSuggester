@@ -336,12 +336,14 @@ ChordSuggesterAudioProcessorEditor::ChordSuggesterAudioProcessorEditor (ChordSug
         repaint();
     };
     resetButton.onClick = [this] { progression.reset (currentChord); refreshMelody(); };
-    for (auto* button : { &undoChordButton, &resetChordsButton })
+    for (auto* button : { &undoChordButton, &resetChordsButton, &playProgressionButton })
     {
         addAndMakeVisible (*button);
         button->setColour (juce::TextButton::buttonColourId, juce::Colour (0xff20252d));
     }
     undoChordButton.onClick = [this] { undoLastChord(); };
+    playProgressionButton.setColour (juce::TextButton::buttonColourId, accentBlue);
+    playProgressionButton.onClick = [this] { toggleProgressionPlayback(); };
     resetChordsButton.onClick = [this] { progression.reset (currentChord); refreshMelody(); };
     refreshMelody();
     switchTab (false);
@@ -368,6 +370,7 @@ double ChordSuggesterAudioProcessorEditor::gridSize() const
 
 void ChordSuggesterAudioProcessorEditor::stopMelody()
 {
+    endProgressionPlayback (false);
     audioProcessor.stopPreview();
     melodyPlaying = seenPlayhead = false;
     pianoRoll.setPlayhead (-1);
@@ -376,6 +379,20 @@ void ChordSuggesterAudioProcessorEditor::stopMelody()
 
 void ChordSuggesterAudioProcessorEditor::timerCallback()
 {
+    // Follow the progression playback: highlight the chord that's sounding and show it on the keyboard.
+    if (progressionPlaying)
+    {
+        const auto step = (size_t) ((juce::Time::getMillisecondCounter() - progressionStartedAt) / 1000);
+        if (step >= progressionCount)
+            endProgressionPlayback (false);
+        else if ((int) (progressionFirst + step) != progressionSounding)
+        {
+            progressionSounding = (int) (progressionFirst + step);
+            midiKeyboard.showChordPlayback (progression.all()[(size_t) progressionSounding].notes);
+            repaint (progressionBounds());
+        }
+    }
+
     const double beat = audioProcessor.melodyPlayhead();
     if (melodyPlaying)
     {
@@ -394,6 +411,7 @@ void ChordSuggesterAudioProcessorEditor::switchTab (bool melodyView)
     midiKeyboard.setVisible (! showingMelody);
     undoChordButton.setVisible (! showingMelody);
     resetChordsButton.setVisible (! showingMelody);
+    playProgressionButton.setVisible (! showingMelody);
     stopMelody();
     hoveredRow = -1;
     chordsTab.setToggleState (! showingMelody, juce::dontSendNotification);
@@ -435,6 +453,36 @@ void ChordSuggesterAudioProcessorEditor::refreshMelody (bool stopPlayback)
     progressionDisplay.setText (text, false);
     undoChordButton.setEnabled (progression.all().size() > 1);
     resetChordsButton.setEnabled (progression.all().size() > 1);
+    repaint();
+}
+
+void ChordSuggesterAudioProcessorEditor::toggleProgressionPlayback()
+{
+    if (progressionPlaying)
+    {
+        endProgressionPlayback (true);
+        return;
+    }
+
+    const auto& all = progression.all();
+    progressionCount = (size_t) audioProcessor.previewProgression (all);
+    progressionFirst = all.size() - progressionCount;
+    progressionStartedAt = juce::Time::getMillisecondCounter();
+    progressionPlaying = progressionCount > 0;
+    progressionSounding = -1;
+    playProgressionButton.setButtonText ("Stop");
+}
+
+void ChordSuggesterAudioProcessorEditor::endProgressionPlayback (bool stopAudio)
+{
+    if (! progressionPlaying)
+        return;
+
+    progressionPlaying = false;
+    progressionSounding = -1;
+    playProgressionButton.setButtonText ("Play");
+    if (stopAudio)
+        audioProcessor.stopPreview();
     repaint();
 }
 
@@ -560,6 +608,7 @@ void ChordSuggesterAudioProcessorEditor::chooseMoreChord()
     // Copy first: setCurrentChord rebuilds moreChordOptions.
     const chords::Chord chosen = moreChordOptions[(size_t) id - 1];
     midiKeyboard.showChordPlayback (chosen.notes);
+    endProgressionPlayback (false);
     audioProcessor.previewChord (chosen);
     setCurrentChord (chosen);
     progression.confirm (currentChord);
@@ -615,25 +664,26 @@ void ChordSuggesterAudioProcessorEditor::paintProgression (juce::Graphics& g)
     const int chipHeight = 28, lineGap = 8, arrowWidth = 20;
     const auto ellipsis = juce::String::fromUTF8 ("\xe2\x80\xa6");
 
-    struct Chip { juce::String text; juce::Rectangle<int> bounds; bool current; };
+    struct Chip { juce::String text; juce::Rectangle<int> bounds; bool current; int index; };
     const auto layout = [&] (size_t first, std::vector<Chip>& chips)
     {
         chips.clear();
         int x = inner.getX(), y = inner.getY();
-        std::vector<std::pair<juce::String, bool>> items;
-        if (first > 0) items.push_back ({ ellipsis, false });
+        struct Item { juce::String text; bool current; int index; };
+        std::vector<Item> items;
+        if (first > 0) items.push_back ({ ellipsis, false, -1 });
         for (size_t i = first; i < all.size(); ++i)
-            items.push_back ({ juce::String (all[i].name), i + 1 == all.size() });
+            items.push_back ({ juce::String (all[i].name), i + 1 == all.size(), (int) i });
 
         for (size_t i = 0; i < items.size(); ++i)
         {
-            const int width = juce::roundToInt (juce::GlyphArrangement::getStringWidth (chipFont, items[i].first)) + 22;
+            const int width = juce::roundToInt (juce::GlyphArrangement::getStringWidth (chipFont, items[i].text)) + 22;
             if (x > inner.getX() && x + width > inner.getRight())
             {
                 x = inner.getX();
                 y += chipHeight + lineGap;
             }
-            chips.push_back ({ items[i].first, { x, y, width, chipHeight }, items[i].second });
+            chips.push_back ({ items[i].text, { x, y, width, chipHeight }, items[i].current, items[i].index });
             x += width + arrowWidth;
         }
         return chips.empty() || chips.back().bounds.getBottom() <= inner.getBottom();
@@ -648,6 +698,11 @@ void ChordSuggesterAudioProcessorEditor::paintProgression (juce::Graphics& g)
         const auto& chip = chips[i];
         g.setColour (chip.current ? accentBlue : juce::Colour (0xff2b3240));
         g.fillRoundedRectangle (chip.bounds.toFloat(), 8.0f);
+        if (chip.index >= 0 && chip.index == progressionSounding)
+        {
+            g.setColour (juce::Colour (0xfff8cc6a));   // the same gold as the melody playhead
+            g.drawRoundedRectangle (chip.bounds.toFloat().reduced (1.0f), 8.0f, 2.5f);
+        }
         g.setColour (juce::Colour (0xfff1f3f6));
         g.drawText (chip.text, chip.bounds, juce::Justification::centred);
 
@@ -845,9 +900,11 @@ void ChordSuggesterAudioProcessorEditor::resized()
     keySelector.setBounds (getWidth() - 200, 22, 176, 32);
     moreChords.setBounds (getWidth() - 264, 76, 240, 32);
     const auto progressionArea = progressionBounds();
-    const int halfWidth = (progressionArea.getWidth() - 10) / 2;
-    undoChordButton.setBounds (progressionArea.getX(), progressionArea.getBottom() + 10, halfWidth, 32);
-    resetChordsButton.setBounds (progressionArea.getRight() - halfWidth, progressionArea.getBottom() + 10, halfWidth, 32);
+    const int thirdWidth = (progressionArea.getWidth() - 16) / 3;
+    const int buttonY = progressionArea.getBottom() + 10;
+    playProgressionButton.setBounds (progressionArea.getX(), buttonY, thirdWidth, 32);
+    undoChordButton.setBounds (progressionArea.getX() + thirdWidth + 8, buttonY, thirdWidth, 32);
+    resetChordsButton.setBounds (progressionArea.getRight() - thirdWidth, buttonY, thirdWidth, 32);
     const auto keyboardArea = juce::Rectangle<int> (24, getHeight() - 112, leftColumnWidth - 48, 88);
     midiKeyboard.setBounds (keyboardArea.reduced (1));
     midiKeyboard.setKeyWidth (float (midiKeyboard.getWidth()) / 7.0f);
@@ -879,17 +936,20 @@ void ChordSuggesterAudioProcessorEditor::mouseDown (const juce::MouseEvent& even
     {
         previewedChord = suggestions[(size_t) row].chord;
         midiKeyboard.showChordPlayback (previewedChord->notes);
+        endProgressionPlayback (false);
         audioProcessor.previewChord (*previewedChord);
         repaint();
     }
     else if (currentChordBounds().contains (position))
     {
         midiKeyboard.showChordPlayback (currentChord.notes);
+        endProgressionPlayback (false);
         audioProcessor.previewChord (currentChord);
     }
     else if (previewedChord && transitionBounds().contains (position))
     {
         midiKeyboard.showTransitionPlayback (currentChord.notes, previewedChord->notes);
+        endProgressionPlayback (false);
         audioProcessor.previewTransition (currentChord, *previewedChord);
     }
     updateCursor (event.getPosition());
@@ -1011,6 +1071,7 @@ void ChordSuggesterAudioProcessorEditor::filesDropped (const juce::StringArray& 
 
             // Play it and light up the keyboard, the same as clicking "Your chord".
             midiKeyboard.showChordPlayback (currentChord.notes);
+            endProgressionPlayback (false);
             audioProcessor.previewChord (currentChord);
 
             // Spell the notes to match the chord's name: flats for "Ab minor", sharps for "F# major".
