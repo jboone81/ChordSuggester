@@ -11,7 +11,7 @@ class PreviewPlayback
     struct Request
     {
         std::array<Event, 128> notes {};
-        std::array<std::array<int, 3>, 8> chords {};
+        std::array<std::array<int, 3>, 32> chords {};
         int noteCount = 0, chordCount = 0;
         double seconds = 0, chordSeconds = 2.0;
         bool loop = false, melody = false;
@@ -26,6 +26,20 @@ public:
         for (int i = 0; i < request.chordCount; ++i)
             request.chords[i] = voicing ((i == 0 ? first : *second).notes, 60);
         publish (request);
+    }
+    // Plays a chord progression in order, one chord per secondsPerChord. If there are more
+    // chords than fit, the most recent ones are played. Returns how many chords will play.
+    int progression (const std::vector<chords::Chord>& list, double secondsPerChord = 1.0)
+    {
+        Request request;
+        const size_t count = std::min (list.size(), request.chords.size());
+        request.chordCount = int (count);
+        request.chordSeconds = secondsPerChord;
+        request.seconds = double (count) * secondsPerChord;
+        for (size_t i = 0; i < count; ++i)
+            request.chords[i] = voicing (list[list.size() - count + i].notes, 60);
+        publish (request);
+        return int (count);
     }
     void audition (int midi)
     {

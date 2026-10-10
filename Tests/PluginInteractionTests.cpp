@@ -38,11 +38,12 @@ static void snapshot (juce::Component& editor, const juce::String& filename)
     check (png.writeImageToStream (image, stream), "Snapshot renders");
 }
 
-static juce::MouseEvent pointerEvent (juce::Component& component, juce::Point<float> point, int count = 1)
+static juce::MouseEvent pointerEvent (juce::Component& component, juce::Point<float> point, int count = 1,
+                                      int button = juce::ModifierKeys::leftButtonModifier)
 {
     const auto now = juce::Time::getCurrentTime();
     return { juce::Desktop::getInstance().getMainMouseSource(), point,
-             juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier),
+             juce::ModifierKeys (button),
              1.0f, 0.0f, 0.0f, 0.0f, 0.0f, &component, &component, now, point, now, count, false };
 }
 
@@ -85,6 +86,22 @@ static void testEditing()
     check (phrase.notes.size() == 2 && phrase.notes.back().startBeat == 0 && phrase.notes.back().beats == 0.5, "Double-click adds grid note");
     roll.keyPressed (juce::KeyPress (juce::KeyPress::backspaceKey));
     check (phrase.notes.size() == 1, "Backspace removes selected note");
+
+    // Drawing: click an empty cell for a one-step note, drag right to lengthen it.
+    phrase.notes = { {74, 1, 2} };
+    bounds = roll.noteBounds ({67, 0.5, 0});
+    point = { bounds.getX() + 2, bounds.getCentreY() };
+    roll.mouseDown (pointerEvent (roll, point));
+    check (phrase.notes.size() == 2 && phrase.notes.back().midi == 67 && phrase.notes.back().beats == 0.5
+           && phrase.notes.back().startBeat == 0, "Click on empty grid draws a note");
+    roll.mouseDrag (pointerEvent (roll, point + juce::Point<float> (float (beatWidth * 1.2), 0)));
+    check (phrase.notes.back().beats == 1.5, "Dragging lengthens the drawn note to the grid");
+    roll.mouseDrag (pointerEvent (roll, point + juce::Point<float> (float (beatWidth * 3.5), 0)));
+    roll.mouseUp (pointerEvent (roll, point));
+    check (phrase.notes.back().beats == 2.0, "Drawn note stretches up to the next note");
+    roll.mouseDown (pointerEvent (roll, roll.noteBounds (phrase.notes.back()).getCentre(), 1,
+                                  juce::ModifierKeys::rightButtonModifier));
+    check (phrase.notes.size() == 1 && phrase.notes[0].midi == 74, "Right-click deletes a note");
 }
 int main()
 {

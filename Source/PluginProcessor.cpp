@@ -174,6 +174,11 @@ void ChordSuggesterAudioProcessor::previewNote (int midi) { preview.audition (mi
 void ChordSuggesterAudioProcessor::setMelodyBackingEnabled (bool enabled) { preview.setMelodyBackingEnabled (enabled); }
 double ChordSuggesterAudioProcessor::melodyPlayhead() const { return preview.playheadBeat(); }
 
+int ChordSuggesterAudioProcessor::previewProgression (const std::vector<chords::Chord>& progression)
+{
+    return preview.progression (progression);
+}
+
 void ChordSuggesterAudioProcessor::stopPreview()
 {
     preview.stop();

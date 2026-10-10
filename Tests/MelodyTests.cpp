@@ -285,5 +285,24 @@ int main()
             check (std::isfinite (player.nextSample()), "Concurrent requests remain finite");
     }
     producer.join();
+
+    // Progression playback: each chord for one second, then silence; long progressions keep the latest 32.
+    for (const int rate : { 44100, 48000 })
+    {
+        PreviewPlayback progressionPlayer;
+        progressionPlayer.reset (rate);
+        check (progressionPlayer.progression (progression) == 4, "Whole short progression plays");
+        const auto played = render (progressionPlayer, rate * 5);
+        for (int second = 0; second < 4; ++second)
+        {
+            double energy = 0;
+            for (int i = second * rate + rate / 10; i < (second + 1) * rate - rate / 10; ++i) energy += played[i] * played[i];
+            check (energy > 1, "Every chord in the progression sounds");
+        }
+        for (int i = rate * 4 + 128; i < rate * 5; ++i) check (played[i] == 0, "Progression stops after its last chord");
+        check (progressionPlayer.playheadBeat() < 0, "Progression playback is not a melody playhead");
+        std::vector<chords::Chord> longProgression (40, chords[0]);
+        check (progressionPlayer.progression (longProgression) == 32, "Long progressions play the latest 32 chords");
+    }
     std::cout << "Melody, history, and playback tests passed\n";
 }
