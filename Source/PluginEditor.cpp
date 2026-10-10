@@ -38,6 +38,59 @@ juce::String noteNames (const std::array<int, 3>& notes, bool useFlats)
     return result;
 }
 
+// What the "Explain why" pop-up shows: a title, then a few short points with bullets.
+class ExplanationPanel final : public juce::Component
+{
+public:
+    explicit ExplanationPanel (const chords::Explanation& explanation)
+    {
+        const auto makeLayout = [] (const std::string& text, juce::Font font, juce::Colour colour, float width)
+        {
+            juce::AttributedString string;
+            string.setJustification (juce::Justification::topLeft);
+            string.setWordWrap (juce::AttributedString::byWord);
+            string.append (juce::String::fromUTF8 (text.c_str()), font, colour);
+            juce::TextLayout layout;
+            layout.createLayout (string, width);
+            return layout;
+        };
+
+        title = makeLayout (explanation.title, juce::Font (juce::FontOptions (17.0f).withStyle ("Bold")),
+                            juce::Colours::white, textWidth);
+        float height = padding + title.getHeight() + gap;
+
+        for (const auto& point : explanation.points)
+        {
+            points.push_back (makeLayout (point, juce::Font (juce::FontOptions (14.5f)),
+                                          juce::Colour (0xffe5e8ee), textWidth - bulletIndent));
+            height += points.back().getHeight() + gap;
+        }
+
+        // The panel is as tall as its text needs.
+        setSize ((int) (textWidth + padding * 2.0f), (int) std::ceil (height - gap + padding));
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        float y = padding;
+        title.draw (g, { padding, y, textWidth, title.getHeight() });
+        y += title.getHeight() + gap;
+
+        for (const auto& point : points)
+        {
+            g.setColour (juce::Colour (0xff7aa2ff));
+            g.fillEllipse (padding + 2.0f, y + 6.0f, 5.0f, 5.0f);
+            point.draw (g, { padding + bulletIndent, y, textWidth - bulletIndent, point.getHeight() });
+            y += point.getHeight() + gap;
+        }
+    }
+
+private:
+    static constexpr float padding = 14.0f, gap = 10.0f, textWidth = 340.0f, bulletIndent = 16.0f;
+    juce::TextLayout title;
+    std::vector<juce::TextLayout> points;
+};
+
 const char* safetyDescription (float safety)
 {
     if (safety >= 0.8f) return "Safest";
@@ -358,6 +411,11 @@ ChordSuggesterAudioProcessorEditor::ChordSuggesterAudioProcessorEditor (ChordSug
 
 ChordSuggesterAudioProcessorEditor::~ChordSuggesterAudioProcessorEditor()
 {
+    if (explanationBox != nullptr)
+    {
+        explanationBox->exitModalState (0);
+        explanationBox->setVisible (false);
+    }
     keySelector.setLookAndFeel (nullptr);
     audioProcessor.stopPreview();
 }
@@ -744,6 +802,39 @@ int ChordSuggesterAudioProcessorEditor::rowAt (juce::Point<int> position) const
     return -1;
 }
 
+juce::Rectangle<int> ChordSuggesterAudioProcessorEditor::explainButtonBounds (int index) const
+{
+    const auto row = rowBounds (index);
+    const int width = 104, height = 22;
+
+    // Under the chord's notes when the row is tall enough for a third line...
+    if (row.getHeight() >= 82)
+        return { row.getX() + 116, row.getY() + 55, width, height };
+
+    // ...otherwise (a short window) beside them, just left of the Safe/Dramatic label.
+    return { row.getRight() - 124 - width, row.getCentreY() - height / 2, width, height };
+}
+
+int ChordSuggesterAudioProcessorEditor::explainButtonAt (juce::Point<int> position) const
+{
+    for (int i = 0; i < (int) suggestions.size(); ++i)
+        if (explainButtonBounds (i).contains (position))
+            return i;
+
+    return -1;
+}
+
+void ChordSuggesterAudioProcessorEditor::showExplanation (int index)
+{
+    if (index < 0 || index >= (int) suggestions.size())
+        return;
+
+    // The wording comes from chords::explain in ChordExplain.h. The pop-up points at the
+    // button, closes when the user clicks anywhere else, and deletes itself.
+    auto panel = std::make_unique<ExplanationPanel> (chords::explain (currentChord, suggestions[(size_t) index].chord, keyRoot));
+    explanationBox = &juce::CallOutBox::launchAsynchronously (std::move (panel), explainButtonBounds (index), this);
+}
+
 //==============================================================================
 void ChordSuggesterAudioProcessorEditor::paint (juce::Graphics& g)
 {
@@ -865,6 +956,16 @@ void ChordSuggesterAudioProcessorEditor::paint (juce::Graphics& g)
         g.drawText (details, detailsX, row.getY() + 31, detailsWidth, 20,
                     juce::Justification::centredLeft);
 
+        // The "Explain why" button. Clicking it is handled in mouseDown.
+        const auto explainButton = explainButtonBounds (i).toFloat();
+        g.setColour (juce::Colours::white.withAlpha (i == hoveredExplain ? 0.32f : 0.16f));
+        g.fillRoundedRectangle (explainButton, 6.0f);
+        g.setColour (juce::Colours::white.withAlpha (0.45f));
+        g.drawRoundedRectangle (explainButton.reduced (0.5f), 6.0f, 1.0f);
+        g.setColour (juce::Colours::white);
+        g.setFont (juce::FontOptions (13.0f).withStyle ("Bold"));
+        g.drawText ("Explain why", explainButton, juce::Justification::centred);
+
         g.setFont (juce::FontOptions (15.0f).withStyle ("Bold"));
         g.drawText (safetyDescription (suggestion.safety), row.getRight() - 112, row.getY(),
                     92, row.getHeight(), juce::Justification::centredRight);
@@ -930,6 +1031,14 @@ void ChordSuggesterAudioProcessorEditor::mouseDown (const juce::MouseEvent& even
     if (showingMelody || ! event.mods.isLeftButtonDown() || event.getNumberOfClicks() != 1)
         return;
     const auto position = event.getPosition();
+
+    // "Explain why" opens the explanation and does nothing else (no preview).
+    if (const int explain = explainButtonAt (position); explain >= 0)
+    {
+        showExplanation (explain);
+        return;
+    }
+
     const int row = rowAt (position);
 
     if (row >= 0)
@@ -959,6 +1068,8 @@ void ChordSuggesterAudioProcessorEditor::mouseDoubleClick (const juce::MouseEven
 {
     if (showingMelody || ! event.mods.isLeftButtonDown() || event.getNumberOfClicks() != 2)
         return;
+    if (explainButtonAt (event.getPosition()) >= 0)
+        return;   // a double-click on "Explain why" must not select the chord
     const int row = rowAt (event.getPosition());
     if (row >= 0)
     {
@@ -973,11 +1084,13 @@ void ChordSuggesterAudioProcessorEditor::mouseDoubleClick (const juce::MouseEven
 void ChordSuggesterAudioProcessorEditor::mouseMove (const juce::MouseEvent& event)
 {
     const int row = showingMelody ? -1 : rowAt (event.getPosition());
+    const int explain = showingMelody ? -1 : explainButtonAt (event.getPosition());
     updateCursor (event.getPosition());
 
-    if (row != hoveredRow)
+    if (row != hoveredRow || explain != hoveredExplain)
     {
         hoveredRow = row;
+        hoveredExplain = explain;
         repaint();
     }
 }
@@ -985,9 +1098,9 @@ void ChordSuggesterAudioProcessorEditor::mouseMove (const juce::MouseEvent& even
 void ChordSuggesterAudioProcessorEditor::mouseExit (const juce::MouseEvent&)
 {
     setMouseCursor (juce::MouseCursor::NormalCursor);
-    if (hoveredRow != -1)
+    if (hoveredRow != -1 || hoveredExplain != -1)
     {
-        hoveredRow = -1;
+        hoveredRow = hoveredExplain = -1;
         repaint();
     }
 }

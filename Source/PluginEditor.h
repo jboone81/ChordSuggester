@@ -11,6 +11,7 @@
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
 #include "ChordEngine.h"
+#include "ChordExplain.h"
 #include "MidiChordReader.h"
 #include "MidiDragOut.h"
 #include <optional>
@@ -116,6 +117,12 @@ private:
 
     // Which suggestion is under this point, or -1 if none.
     int rowAt (juce::Point<int> position) const;
+
+    // The "Explain why" button on suggestion number `index`, and which one is under a point (-1 if none).
+    juce::Rectangle<int> explainButtonBounds (int index) const;
+    int explainButtonAt (juce::Point<int> position) const;
+    // Opens a pop-up explaining why suggestion number `index` works after the current chord.
+    void showExplanation (int index);
     juce::Rectangle<int> currentChordBounds() const;
     juce::Rectangle<int> transitionBounds() const;
     juce::Rectangle<int> progressionBounds() const;
@@ -149,6 +156,8 @@ private:
     std::vector<chords::Suggestion> suggestions;
     std::optional<chords::Chord> previewedChord;
     int hoveredRow = -1;
+    int hoveredExplain = -1;   // the "Explain why" button the mouse is over, or -1
+    juce::Component::SafePointer<juce::CallOutBox> explanationBox;   // the explanation pop-up while it is open
     melody::Progression progression { currentChord };
     melody::Estimate scaleEstimate;
     melody::Phrase phrase;
