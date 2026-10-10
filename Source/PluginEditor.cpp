@@ -486,6 +486,18 @@ void ChordSuggesterAudioProcessorEditor::endProgressionPlayback (bool stopAudio)
     repaint();
 }
 
+void ChordSuggesterAudioProcessorEditor::confirmChord (const chords::Chord& chord)
+{
+    setCurrentChord (chord);
+    progression.confirm (currentChord);
+    refreshMelody (false);
+}
+
+bool ChordSuggesterAudioProcessorEditor::isChordDropTarget (juce::Point<int> position) const
+{
+    return currentChordBounds().contains (position) || progressionBounds().contains (position);
+}
+
 void ChordSuggesterAudioProcessorEditor::undoLastChord()
 {
     if (! progression.removeLast())
@@ -872,7 +884,7 @@ void ChordSuggesterAudioProcessorEditor::paint (juce::Graphics& g)
 
     g.setColour (secondaryText);
     g.setFont (juce::FontOptions (12.5f));
-    g.drawText (juce::String::fromUTF8 ("Click to preview \xc2\xb7 Double-click to select"),
+    g.drawText (juce::String::fromUTF8 ("Click to preview \xc2\xb7 Double-click or drag to Your chord to select"),
                 leftColumnWidth + 28, getHeight() - 76, getWidth() - leftColumnWidth - 52, 20,
                 juce::Justification::centred);
 
@@ -893,6 +905,29 @@ void ChordSuggesterAudioProcessorEditor::paint (juce::Graphics& g)
     g.setColour (secondaryText);
     g.drawText ("Dramatic", legendX + legendWidth + 8, legendY - 5, 72, 22,
                 juce::Justification::centredLeft);
+
+    // While a suggestion is being dragged: outline where it can be dropped, and draw it under the mouse.
+    if (draggingChord && dragRow >= 0 && dragRow < (int) suggestions.size())
+    {
+        const bool overTarget = isChordDropTarget (dragPosition);
+        for (const auto target : { currentChordBounds(), progressionBounds() })
+        {
+            const bool hovered = target.contains (dragPosition);
+            g.setColour (accentBlue.withAlpha (hovered ? 0.22f : 0.08f));
+            g.fillRoundedRectangle (target.toFloat(), 12.0f);
+            g.setColour (accentBlue.withAlpha (hovered ? 1.0f : 0.6f));
+            g.drawRoundedRectangle (target.toFloat().reduced (1.0f), 12.0f, hovered ? 3.0f : 2.0f);
+        }
+
+        const auto& dragged = suggestions[(size_t) dragRow];
+        const auto ghost = juce::Rectangle<float> (110.0f, 48.0f).withCentre (dragPosition.toFloat());
+        g.setColour (dramaticGray.interpolatedWith (accentBlue, dragged.safety).withAlpha (0.92f));
+        g.fillRoundedRectangle (ghost, 10.0f);
+        g.setColour (juce::Colours::white.withAlpha (overTarget ? 1.0f : 0.5f));
+        g.drawRoundedRectangle (ghost, 10.0f, 1.5f);
+        g.setFont (juce::FontOptions (22.0f).withStyle ("Bold"));
+        g.drawText (dragged.chord.name, ghost.toNearestInt(), juce::Justification::centred);
+    }
 }
 
 void ChordSuggesterAudioProcessorEditor::resized()
@@ -932,6 +967,9 @@ void ChordSuggesterAudioProcessorEditor::mouseDown (const juce::MouseEvent& even
     const auto position = event.getPosition();
     const int row = rowAt (position);
 
+    dragRow = row;   // pressing on a suggestion can also start dragging it
+    draggingChord = false;
+
     if (row >= 0)
     {
         previewedChord = suggestions[(size_t) row].chord;
@@ -961,13 +999,45 @@ void ChordSuggesterAudioProcessorEditor::mouseDoubleClick (const juce::MouseEven
         return;
     const int row = rowAt (event.getPosition());
     if (row >= 0)
-    {
-        setCurrentChord (suggestions[(size_t) row].chord);
-        progression.confirm (currentChord);
-        // Keep the first click's chord preview sounding during confirmation.
-        refreshMelody (false);
-    }
+        confirmChord (suggestions[(size_t) row].chord);   // the first click's preview keeps sounding
+    dragRow = -1;
     updateCursor (event.getPosition());
+}
+
+void ChordSuggesterAudioProcessorEditor::mouseDrag (const juce::MouseEvent& event)
+{
+    if (showingMelody || dragRow < 0)
+        return;
+
+    // Only a real move counts as a drag, so a wobbly click is still a click.
+    if (! draggingChord && event.getDistanceFromDragStart() < 6)
+        return;
+
+    draggingChord = true;
+    dragPosition = event.getPosition();
+    setMouseCursor (juce::MouseCursor::DraggingHandCursor);
+    repaint();
+}
+
+void ChordSuggesterAudioProcessorEditor::mouseUp (const juce::MouseEvent& event)
+{
+    const int row = dragRow;
+    const bool dropped = draggingChord && row >= 0 && row < (int) suggestions.size()
+                         && isChordDropTarget (event.getPosition());
+    dragRow = -1;
+    draggingChord = false;
+
+    if (dropped)
+    {
+        const chords::Chord chosen = suggestions[(size_t) row].chord;
+        confirmChord (chosen);
+        midiKeyboard.showChordPlayback (chosen.notes);
+        endProgressionPlayback (false);
+        audioProcessor.previewChord (chosen);
+    }
+
+    updateCursor (event.getPosition());
+    repaint();
 }
 
 void ChordSuggesterAudioProcessorEditor::mouseMove (const juce::MouseEvent& event)

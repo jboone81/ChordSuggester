@@ -91,6 +91,8 @@ public:
 
     void mouseDown (const juce::MouseEvent&) override;
     void mouseDoubleClick (const juce::MouseEvent&) override;
+    void mouseDrag (const juce::MouseEvent&) override;
+    void mouseUp (const juce::MouseEvent&) override;
     void mouseMove (const juce::MouseEvent&) override;
     void mouseExit (const juce::MouseEvent&) override;
 
@@ -121,6 +123,10 @@ private:
     juce::Rectangle<int> progressionBounds() const;
     void paintProgression (juce::Graphics&);
     void undoLastChord();
+    // Makes this chord the one you have and adds it to the progression (double-click or drop).
+    void confirmChord (const chords::Chord& chord);
+    // True if a dragged suggestion let go here would be selected: "Your chord" or "Your progression".
+    bool isChordDropTarget (juce::Point<int> position) const;
     void toggleProgressionPlayback();
     // Clears the "now playing" highlight; also silences playback when stopAudio is true.
     void endProgressionPlayback (bool stopAudio);
@@ -149,6 +155,9 @@ private:
     std::vector<chords::Suggestion> suggestions;
     std::optional<chords::Chord> previewedChord;
     int hoveredRow = -1;
+    int dragRow = -1;                  // the suggestion the mouse went down on, while the button is held
+    bool draggingChord = false;        // true once that press has moved far enough to be a drag
+    juce::Point<int> dragPosition;
     melody::Progression progression { currentChord };
     melody::Estimate scaleEstimate;
     melody::Phrase phrase;

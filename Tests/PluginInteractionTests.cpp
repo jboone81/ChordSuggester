@@ -47,6 +47,15 @@ static juce::MouseEvent pointerEvent (juce::Component& component, juce::Point<fl
              1.0f, 0.0f, 0.0f, 0.0f, 0.0f, &component, &component, now, point, now, count, false };
 }
 
+// A mouse event at `point` for a press that started at `downPoint` (for drags).
+static juce::MouseEvent dragEvent (juce::Component& component, juce::Point<float> point, juce::Point<float> downPoint)
+{
+    const auto now = juce::Time::getCurrentTime();
+    return { juce::Desktop::getInstance().getMainMouseSource(), point,
+             juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier),
+             1.0f, 0.0f, 0.0f, 0.0f, 0.0f, &component, &component, now, downPoint, now, 1, false };
+}
+
 static void testEditing()
 {
     melody::Phrase phrase;
@@ -231,5 +240,16 @@ int main()
     check (! button (editor, "Play").isEnabled(), "Scale change invalidates phrase");
     ChordSuggesterAudioProcessorEditor reopened (processor);
     check (history (reopened).getText() == "C", "New editor resets prototype history");
+    // Dragging a suggestion onto "Your chord" selects it, like a double-click; letting go elsewhere does nothing.
+    const juce::Point<float> rowPoint { 600.0f, 150.0f };
+    reopened.mouseDown (dragEvent (reopened, rowPoint, rowPoint));
+    reopened.mouseDrag (dragEvent (reopened, { 300.0f, 170.0f }, rowPoint));
+    reopened.mouseUp (dragEvent (reopened, { 150.0f, 200.0f }, rowPoint));
+    check (history (reopened).getText().startsWith ("C -> "), "Dropping a suggestion on Your chord selects it");
+    const auto afterDrop = history (reopened).getText();
+    reopened.mouseDown (dragEvent (reopened, rowPoint, rowPoint));
+    reopened.mouseDrag (dragEvent (reopened, { 700.0f, 400.0f }, rowPoint));
+    reopened.mouseUp (dragEvent (reopened, { 700.0f, 400.0f }, rowPoint));
+    check (history (reopened).getText() == afterDrop, "Dropping a suggestion elsewhere changes nothing");
     std::cout << "Plugin interaction and passthrough tests passed\n";
 }
