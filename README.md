@@ -2,7 +2,7 @@
 
 An audio plugin that suggests which chord to play next, for people who don't know music theory. You give it a chord, and it lists the other chords in the key, colored from blue (safe) to gray (dramatic).
 
-**Status:** early prototype. The starting chord is fixed to C major in the key of C.
+**Status:** early prototype. It starts on C major in the key of C. Click a suggested chord to move to it and get new suggestions. No sound yet.
 
 ## What you need
 
