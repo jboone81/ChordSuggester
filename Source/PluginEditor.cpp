@@ -206,6 +206,16 @@ ChordSuggesterAudioProcessorEditor::ChordSuggesterAudioProcessorEditor (ChordSug
     keySelector.onChange = [this] { updateKeySelection(); };
     addAndMakeVisible (keySelector);
 
+    moreChords.setComponentID ("moreChords");
+    moreChords.setTextWhenNothingSelected (juce::String::fromUTF8 ("More chords\xe2\x80\xa6"));
+    moreChords.setColour (juce::ComboBox::backgroundColourId, headerColour);
+    moreChords.setColour (juce::ComboBox::textColourId, juce::Colour (0xfff1f3f6));
+    moreChords.setColour (juce::ComboBox::outlineColourId, juce::Colour (0xff394150));
+    moreChords.setColour (juce::ComboBox::arrowColourId, juce::Colour (0xfff1f3f6));
+    moreChords.onChange = [this] { chooseMoreChord(); };
+    addAndMakeVisible (moreChords);
+    updateMoreChords();
+
     addAndMakeVisible (midiKeyboard);
 
     addAndMakeVisible (chordsTab);
@@ -327,6 +337,7 @@ void ChordSuggesterAudioProcessorEditor::switchTab (bool melodyView)
 {
     showingMelody = melodyView;
     keySelector.setVisible (! showingMelody);
+    moreChords.setVisible (! showingMelody);
     midiKeyboard.setVisible (! showingMelody);
     stopMelody();
     hoveredRow = -1;
@@ -410,7 +421,80 @@ void ChordSuggesterAudioProcessorEditor::setCurrentChord (const chords::Chord& n
     currentChord = chosen;
     previewedChord.reset();
     suggestions = chords::suggest (currentChord, keyRoot);
+    updateMoreChords();
     repaint();
+}
+
+void ChordSuggesterAudioProcessorEditor::updateMoreChords()
+{
+    moreChords.clear (juce::dontSendNotification);
+    moreChordOptions.clear();
+
+    const auto alreadyShown = [this] (const chords::Chord& chord)
+    {
+        if (chords::sameNotes (chord, currentChord))
+            return true;
+        for (const auto& option : moreChordOptions)
+            if (chords::sameNotes (option, chord))
+                return true;
+        return std::any_of (suggestions.begin(), suggestions.end(),
+                            [&chord] (const chords::Suggestion& s) { return chords::sameNotes (s.chord, chord); });
+    };
+
+    const auto add = [this] (const chords::Chord& chord, const juce::String& label)
+    {
+        moreChordOptions.push_back (chord);
+        moreChords.addItem (label, (int) moreChordOptions.size());
+    };
+
+    // Chords from outside the key that real songs do play after this one, most common first.
+    auto common = chords::connectedChords (currentChord, keyRoot);
+    std::stable_sort (common.begin(), common.end(), [] (const chords::Suggestion& a, const chords::Suggestion& b)
+                      { return a.chance > b.chance; });
+
+    bool headingAdded = false;
+    for (const auto& s : common)
+    {
+        if (alreadyShown (s.chord))
+            continue;
+        if (! headingAdded)
+        {
+            moreChords.addSectionHeading ("Common next in real songs");
+            headingAdded = true;
+        }
+        const int percent = juce::roundToInt (s.chance * 100.0f);
+        add (s.chord, juce::String (s.chord.fullName) + "  (" + (percent < 1 ? juce::String ("<1") : juce::String (percent)) + "%)");
+    }
+
+    // Everything else: every major, minor and diminished chord, starting from the key note.
+    headingAdded = false;
+    for (int state = 0; state < chords::data::numStates; ++state)
+    {
+        const auto chord = chords::chordFromDataState (state, keyRoot);
+        if (alreadyShown (chord))
+            continue;
+        if (! headingAdded)
+        {
+            moreChords.addSectionHeading ("All other chords");
+            headingAdded = true;
+        }
+        add (chord, chord.fullName);
+    }
+}
+
+void ChordSuggesterAudioProcessorEditor::chooseMoreChord()
+{
+    const int id = moreChords.getSelectedId();
+    if (id < 1 || id > (int) moreChordOptions.size())
+        return;
+
+    // Copy first: setCurrentChord rebuilds moreChordOptions.
+    const chords::Chord chosen = moreChordOptions[(size_t) id - 1];
+    midiKeyboard.showChordPlayback (chosen.notes);
+    audioProcessor.previewChord (chosen);
+    setCurrentChord (chosen);
+    progression.confirm (currentChord);
+    refreshMelody (false);
 }
 
 void ChordSuggesterAudioProcessorEditor::updateKeySelection()
@@ -422,6 +506,7 @@ void ChordSuggesterAudioProcessorEditor::updateKeySelection()
     keyRoot = selectedId - 1;
     suggestions = chords::suggest (currentChord, keyRoot);
     previewedChord.reset();
+    updateMoreChords();
     repaint();
 }
 
@@ -612,6 +697,7 @@ void ChordSuggesterAudioProcessorEditor::paint (juce::Graphics& g)
 void ChordSuggesterAudioProcessorEditor::resized()
 {
     keySelector.setBounds (getWidth() - 200, 22, 176, 32);
+    moreChords.setBounds (getWidth() - 264, 76, 240, 32);
     const auto keyboardArea = juce::Rectangle<int> (24, getHeight() - 112, leftColumnWidth - 48, 88);
     midiKeyboard.setBounds (keyboardArea.reduced (1));
     midiKeyboard.setKeyWidth (float (midiKeyboard.getWidth()) / 7.0f);
