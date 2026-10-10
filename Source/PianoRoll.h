@@ -117,13 +117,24 @@ public:
         {
             g.setColour (juce::Colours::white);
             g.setFont (juce::FontOptions (16.0f));
-            g.drawText ("New suggestion generates notes. Double-click the grid to add your own.",
+            g.drawText ("Click or drag on the grid to draw your own melody, or press New suggestion.",
                         area.reduced (20), juce::Justification::centred);
         }
         g.restoreState();
     }
     void mouseDown (const juce::MouseEvent& event) override
     {
+        // Right-click a note to delete it.
+        if (event.mods.isRightButtonDown())
+        {
+            if (const int index = hit (event.position); index >= 0 && melody::deleteNote (phrase, index))
+            {
+                selected = -1;
+                if (onEdit) onEdit();
+                repaint();
+            }
+            return;
+        }
         if (! event.mods.isLeftButtonDown()) return;
         if (isShowing()) grabKeyboardFocus();
         // A click on the piano at the left plays that key.
@@ -136,7 +147,26 @@ public:
             return;
         }
         selected = hit (event.position);
-        dragging = false;
+        dragging = drawing = false;
+        // A click on an empty part of the grid draws a note there; dragging right makes it longer.
+        if (selected < 0 && event.getNumberOfClicks() == 1 && gridArea().toFloat().contains (event.position))
+        {
+            const melody::Note note { pitchAt (event.position.y), grid,
+                                      std::clamp (std::floor (beatAt (event.position.x) / grid) * grid, 0.0, phrase.lengthBeats - grid) };
+            const int index = melody::addNote (phrase, note);
+            rejected = index < 0;
+            if (index >= 0)
+            {
+                selected = index;
+                drawing = true;
+                original = note;
+                heldMidi = note.midi;
+                if (onEdit) onEdit();
+                if (onAudition) onAudition (note.midi);
+            }
+            repaint();
+            return;
+        }
         if (selected >= 0)
         {
             original = phrase.notes[size_t (selected)];
@@ -158,6 +188,20 @@ public:
                 if (onAudition) onAudition (key);
                 repaint();
             }
+            return;
+        }
+        if (drawing)
+        {
+            // Stretch the new note to the grid line at or after the mouse. Stops short of the next note.
+            auto note = original;
+            const double end = std::ceil (beatAt (event.position.x) / grid) * grid;
+            double limit = phrase.lengthBeats;
+            for (size_t i = 0; i < phrase.notes.size(); ++i)
+                if (int (i) != selected && phrase.notes[i].startBeat >= note.startBeat)
+                    limit = std::min (limit, phrase.notes[i].startBeat);
+            note.beats = std::clamp (end - note.startBeat, grid, std::max (grid, limit - note.startBeat));
+            if (note.beats != phrase.notes[size_t (selected)].beats && melody::editNote (phrase, selected, note))
+                repaint();
             return;
         }
         if (selected < 0 || ! event.mods.isLeftButtonDown()) return;
@@ -182,7 +226,7 @@ public:
         heldMidi = phrase.notes[size_t (selected)].midi;
         repaint();
     }
-    void mouseUp (const juce::MouseEvent&) override { dragging = playingKeys = false; heldMidi = -1; repaint(); }
+    void mouseUp (const juce::MouseEvent&) override { dragging = drawing = playingKeys = false; heldMidi = -1; repaint(); }
     void mouseDoubleClick (const juce::MouseEvent& event) override
     {
         if (! event.mods.isLeftButtonDown() || ! gridArea().contains (event.getPosition()) || hit (event.position) >= 0) return;
@@ -247,6 +291,12 @@ private:
             if (note.midi == midi && playhead >= note.startBeat && playhead < note.startBeat + note.beats) return true;
         return false;
     }
+    // The beat and the pitch (60 to 84) under a point in the grid, allowing for scrolling.
+    double beatAt (float x) const { return (x - gridArea().getX() + horizontal.getCurrentRangeStart()) / beatWidth(); }
+    int pitchAt (float y) const
+    {
+        return std::clamp (84 - int ((y - gridArea().getY() + vertical.getCurrentRangeStart()) / rowHeight), 60, 84);
+    }
     double resizeWidth (const melody::Note& note) const { return std::min (7.0, double (noteBounds (note).getWidth()) / 3.0); }
     int hit (juce::Point<float> point) const
     {
@@ -260,7 +310,7 @@ private:
     static constexpr int rowHeight = 16;
     double grid = 0.5, playhead = -1;
     int selected = -1, heldMidi = -1;
-    bool resizing = false, dragging = false, playingKeys = false, rejected = false, initialScroll = true;
+    bool resizing = false, dragging = false, drawing = false, playingKeys = false, rejected = false, initialScroll = true;
     melody::Note original;
     juce::Point<float> origin;
 };

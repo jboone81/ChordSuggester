@@ -247,7 +247,7 @@ ChordSuggesterAudioProcessorEditor::ChordSuggesterAudioProcessorEditor (ChordSug
 
     addAndMakeVisible (chordsTab);
     addAndMakeVisible (melodyTab);
-    for (auto* button : { &generateButton, &playButton, &backingButton, &loopButton, &resetButton })
+    for (auto* button : { &generateButton, &playButton, &backingButton, &loopButton, &resetButton, &clearNotesButton })
     {
         addAndMakeVisible (*button);
         button->setColour (juce::TextButton::buttonColourId, juce::Colour (0xff20252d));
@@ -326,6 +326,15 @@ ChordSuggesterAudioProcessorEditor::ChordSuggesterAudioProcessorEditor (ChordSug
         playButton.setEnabled (! phrase.notes.empty());
     };
     pianoRoll.onAudition = [this] (int midi) { stopMelody(); audioProcessor.previewNote (midi); };
+    // Empties the grid so the user can draw a melody from scratch.
+    clearNotesButton.onClick = [this]
+    {
+        stopMelody();
+        phrase.notes.clear();
+        pianoRoll.refresh();
+        playButton.setEnabled (false);
+        repaint();
+    };
     resetButton.onClick = [this] { progression.reset (currentChord); refreshMelody(); };
     for (auto* button : { &undoChordButton, &resetChordsButton })
     {
@@ -389,7 +398,7 @@ void ChordSuggesterAudioProcessorEditor::switchTab (bool melodyView)
     hoveredRow = -1;
     chordsTab.setToggleState (! showingMelody, juce::dontSendNotification);
     melodyTab.setToggleState (showingMelody, juce::dontSendNotification);
-    for (auto* button : { &generateButton, &playButton, &backingButton, &loopButton, &resetButton }) button->setVisible (showingMelody);
+    for (auto* button : { &generateButton, &playButton, &backingButton, &loopButton, &resetButton, &clearNotesButton }) button->setVisible (showingMelody);
     for (auto* box : { &scaleChoice, &barsChoice, &timingChoice }) box->setVisible (showingMelody);
     progressionDisplay.setVisible (showingMelody);
     pianoRoll.setVisible (showingMelody);
@@ -467,7 +476,7 @@ void ChordSuggesterAudioProcessorEditor::paintMelody (juce::Graphics& g)
                         : "Shaded rows are outside the scale. Drag notes to move them; drag their right edge to resize.",
                 24, getHeight() - 40, getWidth() - 48, 20, juce::Justification::centredLeft);
     g.setColour (juce::Colour (0xffa7afbc));
-    g.drawFittedText ("Double-click to add | Delete to remove | Overlaps rejected | 120 BPM, 4/4 | Shift+wheel scrolls horizontally",
+    g.drawFittedText ("Click or drag to draw | Right-click or Delete removes | Overlaps rejected | 120 BPM, 4/4 | Shift+wheel scrolls horizontally",
                       410, getHeight() - 84, getWidth() - 435, 38, juce::Justification::centredLeft, 2);
 }
 
@@ -847,6 +856,7 @@ void ChordSuggesterAudioProcessorEditor::resized()
     scaleChoice.setBounds (getWidth() - 285, 22, 261, 32);
     generateButton.setBounds (200, 86, 180, 36);
     melodyDragHandle.setBounds (392, 86, 172, 36);
+    clearNotesButton.setBounds (576, 86, 130, 36);
     barsChoice.setBounds (getWidth() - 325, 86, 85, 36);
     timingChoice.setBounds (getWidth() - 150, 86, 126, 36);
     progressionDisplay.setBounds (24, 150, getWidth() - 250, 26);

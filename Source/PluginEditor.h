@@ -153,7 +153,7 @@ private:
     uint32_t generationSeed = std::random_device {}();
     bool showingMelody = false;
     NavigationButton chordsTab { "Chords" }, melodyTab { "Melody" };
-    juce::TextButton generateButton { "New suggestion" }, playButton { "Play" };
+    juce::TextButton generateButton { "New suggestion" }, playButton { "Play" }, clearNotesButton { "Clear notes" };
     juce::TextButton backingButton { "With chords" }, loopButton { "Loop" };
     juce::TextButton resetButton { "Reset progression" };
     juce::TextButton undoChordButton { "Undo last chord" }, resetChordsButton { "Reset" };
