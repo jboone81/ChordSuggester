@@ -11,6 +11,7 @@
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
 #include "ChordEngine.h"
+#include <optional>
 
 //==============================================================================
 /**
@@ -26,6 +27,7 @@ public:
     void resized() override;
 
     void mouseDown (const juce::MouseEvent&) override;
+    void mouseDoubleClick (const juce::MouseEvent&) override;
     void mouseMove (const juce::MouseEvent&) override;
     void mouseExit (const juce::MouseEvent&) override;
 
@@ -38,6 +40,9 @@ private:
 
     // Which suggestion is under this point, or -1 if none.
     int rowAt (juce::Point<int> position) const;
+    juce::Rectangle<int> currentChordBounds() const;
+    juce::Rectangle<int> transitionBounds() const;
+    void updateCursor (juce::Point<int> position);
 
     // This reference is provided as a quick way for your editor to
     // access the processor object that created it.
@@ -46,6 +51,7 @@ private:
     int keyRoot = 0;   // 0 = key of C major
     chords::Chord currentChord { "C", "C major", { { 0, 4, 7 } } };
     std::vector<chords::Suggestion> suggestions;
+    std::optional<chords::Chord> previewedChord;
     int hoveredRow = -1;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ChordSuggesterAudioProcessorEditor)

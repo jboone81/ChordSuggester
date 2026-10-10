@@ -2,7 +2,14 @@
 
 An audio plugin that suggests which chord to play next, for people who don't know music theory. You give it a chord, and it lists the other chords in the key, colored from blue (safe) to gray (dramatic).
 
-**Status:** early prototype. It starts on C major in the key of C. Click a suggested chord to move to it and get new suggestions. No sound yet.
+**Status:** early prototype. It starts on C major in the key of C and includes built-in chord previews.
+
+- Single-click a recommendation to hear its three notes together for one second. The current chord and recommendations stay unchanged.
+- Double-click a recommendation to select it as the current chord and get fresh recommendations, without restarting the preview.
+- Click the current chord to replay it.
+- The small **Preview next** panel shows the current chord followed by the previewed chord. Click it to hear both chords back-to-back, one second each, without changing your selection. It is inactive until you preview a recommendation.
+
+The preview label stays visible after the sound ends and clears when you confirm a chord. Starting another preview or transition smoothly replaces playback and cancels any remaining sequence. Soft built-in tones require no external instrument or samples; an active audio device or host processing is required. Existing audio and MIDI pass through unchanged.
 
 ## What you need
 
@@ -35,6 +42,18 @@ open build/ChordSuggester_artefacts/Debug/Standalone/ChordSuggester.app
 The first build takes several minutes. Later builds only need the second and third commands.
 
 The Standalone app runs the plugin in its own window, so you can test without opening a DAW.
+
+## Playback tests
+
+Enable the optional tests when configuring, then build and run them:
+
+```
+cmake -B build -DCHORDSUGGESTER_BUILD_TESTS=ON
+cmake --build build --config Debug --target ChordPreviewTests
+ctest --test-dir build -C Debug --output-on-failure
+```
+
+These check simultaneous notes and root-position voicing, preview/transition duration, fades, interruption, and audio restart at 44.1, 48, and 96 kHz.
 
 ## Project layout
 

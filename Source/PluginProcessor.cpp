@@ -63,7 +63,7 @@ bool ChordSuggesterAudioProcessor::isMidiEffect() const
 
 double ChordSuggesterAudioProcessor::getTailLengthSeconds() const
 {
-    return 0.0;
+    return 2.01;
 }
 
 int ChordSuggesterAudioProcessor::getNumPrograms()
@@ -93,14 +93,13 @@ void ChordSuggesterAudioProcessor::changeProgramName (int index, const juce::Str
 //==============================================================================
 void ChordSuggesterAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
-    // Use this method as the place to do any pre-playback
-    // initialisation that you need..
+    juce::ignoreUnused (samplesPerBlock);
+    preview.reset (sampleRate);
 }
 
 void ChordSuggesterAudioProcessor::releaseResources()
 {
-    // When playback stops, you can use this as an opportunity to free up any
-    // spare memory, etc.
+    preview.reset (getSampleRate());
 }
 
 #ifndef JucePlugin_PreferredChannelConfigurations
@@ -144,18 +143,26 @@ void ChordSuggesterAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear (i, 0, buffer.getNumSamples());
 
-    // This is the place where you'd normally do the guts of your plugin's
-    // audio processing...
-    // Make sure to reset the state if your inner loop is processing
-    // the samples and the outer loop is handling the channels.
-    // Alternatively, you can process the samples with the channels
-    // interleaved by keeping the same state.
-    for (int channel = 0; channel < totalNumInputChannels; ++channel)
+    // Generate each sample once, then mix the same preview into every output.
+    // Incoming audio and MIDI remain untouched.
+    juce::ignoreUnused (midiMessages);
+    preview.beginBlock();
+    for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
     {
-        auto* channelData = buffer.getWritePointer (channel);
-
-        // ..do something to the data...
+        const float tone = preview.nextSample();
+        for (int channel = 0; channel < totalNumOutputChannels; ++channel)
+            buffer.addSample (channel, sample, tone);
     }
+}
+
+void ChordSuggesterAudioProcessor::previewChord (const chords::Chord& chord)
+{
+    preview.request (chord.notes);
+}
+
+void ChordSuggesterAudioProcessor::previewTransition (const chords::Chord& current, const chords::Chord& next)
+{
+    preview.request (current.notes, &next.notes);
 }
 
 //==============================================================================
