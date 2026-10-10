@@ -579,21 +579,9 @@ void ChordSuggesterAudioProcessorEditor::paint (juce::Graphics& g)
         g.drawText (details, detailsX, row.getY() + 31, detailsWidth, 20,
                     juce::Justification::centredLeft);
 
-        const int playDiameter = juce::jmin (42, row.getHeight() - 12);
-        const auto playButton = juce::Rectangle<float> ((float) (row.getRight() - playDiameter - 16),
-                                                         row.toFloat().getCentreY() - playDiameter * 0.5f,
-                                                         (float) playDiameter, (float) playDiameter);
-        g.setColour (juce::Colour (0x332f3b50));
-        g.fillEllipse (playButton);
-        g.setColour (juce::Colours::white);
         g.setFont (juce::FontOptions (15.0f).withStyle ("Bold"));
-        g.drawText (safetyDescription (suggestion.safety), row.getRight() - 144, row.getY(),
+        g.drawText (safetyDescription (suggestion.safety), row.getRight() - 112, row.getY(),
                     92, row.getHeight(), juce::Justification::centredRight);
-        juce::Path playIcon;
-        playIcon.addTriangle (playButton.getCentreX() - 3.0f, playButton.getCentreY() - 7.0f,
-                              playButton.getCentreX() - 3.0f, playButton.getCentreY() + 7.0f,
-                              playButton.getCentreX() + 8.0f, playButton.getCentreY());
-        g.fillPath (playIcon);
     }
 
     g.setColour (secondaryText);
