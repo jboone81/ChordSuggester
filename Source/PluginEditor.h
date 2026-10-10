@@ -88,6 +88,10 @@ private:
     // Makes newChord the chord you have, then works out fresh suggestions for it.
     void setCurrentChord (const chords::Chord& newChord);
 
+    // The "More chords" drop-down: every chord that isn't already a suggestion.
+    void updateMoreChords();
+    void chooseMoreChord();
+
     // Where suggestion number `index` is drawn, which is also where it can be clicked.
     juce::Rectangle<int> rowBounds (int index) const;
 
@@ -110,6 +114,8 @@ private:
     // access the processor object that created it.
     ChordSuggesterAudioProcessor& audioProcessor;
     juce::ComboBox keySelector;
+    juce::ComboBox moreChords;
+    std::vector<chords::Chord> moreChordOptions;   // item ID n is moreChordOptions[n - 1]
     ChordMidiKeyboard midiKeyboard;
 
     int keyRoot = 0;   // 0 = key of C major
