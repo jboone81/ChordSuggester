@@ -10,7 +10,7 @@
 
 #include <JuceHeader.h>
 #include "ChordEngine.h"
-#include "ChordPreview.h"
+#include "PreviewPlayback.h"
 
 //==============================================================================
 /**
@@ -33,6 +33,10 @@ public:
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     void previewChord (const chords::Chord& chord);
     void previewTransition (const chords::Chord& current, const chords::Chord& next);
+    void previewPhrase (const melody::Phrase& phrase, bool withChords = false, bool loop = false);
+    void previewNote (int midi);
+    double melodyPlayhead() const;
+    void stopPreview();
 
     //==============================================================================
     juce::AudioProcessorEditor* createEditor() override;
@@ -58,7 +62,7 @@ public:
     void setStateInformation (const void* data, int sizeInBytes) override;
 
 private:
-    ChordPreview preview;
+    PreviewPlayback preview;
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ChordSuggesterAudioProcessor)
 };

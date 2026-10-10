@@ -63,7 +63,7 @@ bool ChordSuggesterAudioProcessor::isMidiEffect() const
 
 double ChordSuggesterAudioProcessor::getTailLengthSeconds() const
 {
-    return 2.01;
+    return 16.01;
 }
 
 int ChordSuggesterAudioProcessor::getNumPrograms()
@@ -157,12 +157,25 @@ void ChordSuggesterAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
 
 void ChordSuggesterAudioProcessor::previewChord (const chords::Chord& chord)
 {
-    preview.request (chord.notes);
+    preview.chord (chord);
 }
 
 void ChordSuggesterAudioProcessor::previewTransition (const chords::Chord& current, const chords::Chord& next)
 {
-    preview.request (current.notes, &next.notes);
+    preview.chord (current, &next);
+}
+
+void ChordSuggesterAudioProcessor::previewPhrase (const melody::Phrase& phrase, bool withChords, bool loop)
+{
+    preview.phrase (phrase, withChords, loop);
+}
+
+void ChordSuggesterAudioProcessor::previewNote (int midi) { preview.audition (midi); }
+double ChordSuggesterAudioProcessor::melodyPlayhead() const { return preview.playheadBeat(); }
+
+void ChordSuggesterAudioProcessor::stopPreview()
+{
+    preview.stop();
 }
 
 //==============================================================================
