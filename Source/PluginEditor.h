@@ -69,7 +69,8 @@ private:
 /**
 */
 class ChordSuggesterAudioProcessorEditor  : public juce::AudioProcessorEditor,
-                                            public juce::FileDragAndDropTarget
+                                            public juce::FileDragAndDropTarget,
+                                            private juce::Timer
 {
 public:
     ChordSuggesterAudioProcessorEditor (ChordSuggesterAudioProcessor&);
@@ -126,6 +127,19 @@ private:
     std::vector<chords::Suggestion> suggestions;
     std::optional<chords::Chord> previewedChord;
     int hoveredRow = -1;
+    melody::Progression progression { currentChord };
+    melody::Estimate scaleEstimate;
+    melody::Phrase phrase;
+    PianoRoll pianoRoll { phrase };
+    uint32_t generationSeed = std::random_device {}();
+    bool showingMelody = false;
+    NavigationButton chordsTab { "Chords" }, melodyTab { "Melody" };
+    juce::TextButton generateButton { "New suggestion" }, playButton { "Play" };
+    juce::TextButton backingButton { "With chords" }, loopButton { "Loop" };
+    juce::TextButton resetButton { "Reset progression" };
+    juce::ComboBox scaleChoice, barsChoice, timingChoice;
+    juce::TextEditor progressionDisplay;
+    bool melodyPlaying = false, seenPlayhead = false;
     bool midiDragHovering = false;   // true while a MIDI file is being dragged over the window
     juce::String dropMessage;        // shown under the chord after a drop, e.g. "From clip.mid"
 
