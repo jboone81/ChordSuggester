@@ -171,6 +171,7 @@ void ChordSuggesterAudioProcessor::previewPhrase (const melody::Phrase& phrase, 
 }
 
 void ChordSuggesterAudioProcessor::previewNote (int midi) { preview.audition (midi); }
+void ChordSuggesterAudioProcessor::setMelodyBackingEnabled (bool enabled) { preview.setMelodyBackingEnabled (enabled); }
 double ChordSuggesterAudioProcessor::melodyPlayhead() const { return preview.playheadBeat(); }
 
 void ChordSuggesterAudioProcessor::stopPreview()

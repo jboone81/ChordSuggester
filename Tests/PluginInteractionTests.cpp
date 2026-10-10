@@ -174,6 +174,15 @@ int main()
     processor.processBlock (audio, midi);
     check (audio.getMagnitude (0, 128) > 0 && midi.getNumEvents() == midiBytes, "Audible melody preserves MIDI");
     check (button (editor, "Stop").isEnabled(), "Play becomes Stop");
+    const auto beforeToggle = processor.melodyPlayhead();
+    for (const bool enabled : { false, true, false, true })
+    {
+        button (editor, "With chords").setToggleState (enabled, juce::dontSendNotification);
+        button (editor, "With chords").onClick();
+        for (int block = 0; block < 8; ++block) { audio.clear(); processor.processBlock (audio, midi); }
+        check (button (editor, "Stop").isEnabled() && processor.melodyPlayhead() > beforeToggle,
+               "Backing toggle preserves playback and advances playhead");
+    }
     for (int i = 0; i < 128; ++i) check (audio.getSample (0, i) == audio.getSample (1, i), "Stereo identical preview");
     button (editor, "Chords").onClick();
     for (int block = 0; block < 8; ++block) { audio.clear(); processor.processBlock (audio, midi); }

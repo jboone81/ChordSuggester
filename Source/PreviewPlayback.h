@@ -50,12 +50,14 @@ public:
         }
         std::sort (request.notes.begin(), request.notes.begin() + request.noteCount,
                    [] (const auto& a, const auto& b) { return a.start < b.start; });
-        if (withChords)
-        {
-            request.chordCount = int (std::min (size_t (8), phrase.chords.size()));
-            for (int i = 0; i < request.chordCount; ++i) request.chords[i] = voicing (phrase.chords[i].notes, 48);
-        }
+        request.chordCount = int (std::min (size_t (8), phrase.chords.size()));
+        for (int i = 0; i < request.chordCount; ++i) request.chords[i] = voicing (phrase.chords[i].notes, 48);
+        setMelodyBackingEnabled (withChords);
         publish (request);
+    }
+    void setMelodyBackingEnabled (bool enabled)
+    {
+        backingEnabled.store (enabled ? 1 : 0, std::memory_order_release);
     }
     void stop() { publish (Request {}); }
     void reset (double rate)
@@ -71,6 +73,7 @@ public:
     // Called once per audio block. Also publishes the preceding block's playhead.
     void beginBlock()
     {
+        backingTarget = backingEnabled.load (std::memory_order_acquire) != 0 ? 1.0 : 0.0;
         if (consume())
         {
             pending = slots[front];
@@ -89,6 +92,8 @@ public:
     float nextSample()
     {
         if (active.seconds <= 0) return 0;
+        if (active.melody)
+            backingGain += std::clamp (backingTarget - backingGain, -1.0 / fade, 1.0 / fade);
         double tone = 0;
         while (noteIndex < active.noteCount && position >= samples (active.notes[noteIndex].start + active.notes[noteIndex].duration))
         {
@@ -122,7 +127,7 @@ public:
             double chord = 0;
             for (int i = 0; i < 3; ++i) chord += oscillator (chordPhases[i], chordIncrements[i]);
             tone += chord * envelope (position - samples (chordIndex * active.chordSeconds), samples (active.chordSeconds))
-                * (active.melody ? 0.025 : 0.06);
+                * (active.melody ? 0.025 * backingGain : 0.06);
         }
         const float output = float (tone * (replacementLeft > 0 ? double (replacementLeft) / fade : 1.0));
         ++position;
@@ -175,6 +180,7 @@ private:
     void startPending()
     {
         active = pending;
+        backingGain = backingTarget;
         hasPending = false;
         replacementLeft = 0;
         startTimeline();
@@ -192,10 +198,12 @@ private:
     std::array<Request, 3> slots {};
     std::atomic<unsigned> middle { 1 };
     std::atomic<int> visiblePosition { -1 };
+    std::atomic<int> backingEnabled { 0 };
     unsigned front = 0, back = 2;
     Request active {}, pending {};
     bool hasPending = false, noteStarted = false;
     double sampleRate = 44100, notePhase = 0, noteIncrement = 0;
+    double backingTarget = 0, backingGain = 0;
     int fade = 441, noteIndex = 0, soundingChord = -1, replacementLeft = 0;
     int64_t position = 0;
     std::array<double, 3> chordPhases {}, chordIncrements {};

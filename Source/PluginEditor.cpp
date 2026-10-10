@@ -219,7 +219,7 @@ ChordSuggesterAudioProcessorEditor::ChordSuggesterAudioProcessorEditor (ChordSug
     playButton.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff2563eb));
     backingButton.setClickingTogglesState (true);
     loopButton.setClickingTogglesState (true);
-    backingButton.onClick = [this] { stopMelody(); };
+    backingButton.onClick = [this] { audioProcessor.setMelodyBackingEnabled (backingButton.getToggleState()); };
     loopButton.onClick = [this] { stopMelody(); };
     for (auto* box : { &scaleChoice, &barsChoice, &timingChoice }) addAndMakeVisible (*box);
     scaleChoice.setComponentID ("scale");

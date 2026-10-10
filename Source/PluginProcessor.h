@@ -34,6 +34,7 @@ public:
     void previewChord (const chords::Chord& chord);
     void previewTransition (const chords::Chord& current, const chords::Chord& next);
     void previewPhrase (const melody::Phrase& phrase, bool withChords = false, bool loop = false);
+    void setMelodyBackingEnabled (bool enabled);
     void previewNote (int midi);
     double melodyPlayhead() const;
     void stopPreview();
