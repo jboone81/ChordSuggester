@@ -11,7 +11,7 @@
 
 namespace
 {
-constexpr int headerHeight = 64;
+constexpr int headerHeight = 72;
 constexpr int leftColumnWidth = 380;
 constexpr int keyboardFirstNote = 60;
 constexpr int keyboardLastNote = 71;
@@ -38,13 +38,6 @@ juce::String noteNames (const std::array<int, 3>& notes, bool useFlats)
     return result;
 }
 
-const char* safetyDescription (float safety)
-{
-    if (safety >= 0.8f) return "Safest";
-    if (safety >= 0.6f) return "Safe";
-    if (safety >= 0.35f) return "Balanced";
-    return "Dramatic";
-}
 }
 
 ChordMidiKeyboard::ChordMidiKeyboard (juce::MidiKeyboardState& state)
@@ -54,7 +47,7 @@ ChordMidiKeyboard::ChordMidiKeyboard (juce::MidiKeyboardState& state)
     setScrollButtonsVisible (false);
     setWantsKeyboardFocus (false);
     setVelocity (0.8f, false);
-    setColour (whiteNoteColourId, juce::Colour (0xfff1f3f6));
+    setColour (whiteNoteColourId, juce::Colours::transparentBlack);
     setColour (blackNoteColourId, juce::Colour (0xff101319));
     setColour (keySeparatorLineColourId, juce::Colour (0xff596171));
     setColour (mouseOverKeyOverlayColourId, juce::Colour (0x552563eb));
@@ -178,7 +171,41 @@ void ChordMidiKeyboard::drawBlackNote (int midiNoteNumber, juce::Graphics& g,
     g.setColour (juce::Colour (0xff333946));
     g.strokePath (keyShape, juce::PathStrokeType (0.8f));
 
-    juce::ignoreUnused (midiNoteNumber, noteFillColour);
+    if (isDown || isPlaybackNote (midiNoteNumber))
+    {
+        const auto label = juce::String::fromUTF8 (chords::noteName (midiNoteNumber % 12).c_str());
+        g.setColour (juce::Colour (0xfff1f3f6));
+        g.setFont (juce::FontOptions (juce::jmin (12.0f, getKeyWidth() * 0.38f)).withStyle ("Bold"));
+        g.drawText (label, key.withTrimmedBottom (8.0f), juce::Justification::centredBottom, false);
+    }
+
+    juce::ignoreUnused (noteFillColour);
+}
+
+void RoundedKeySelectorLookAndFeel::drawComboBox (juce::Graphics& g, int width, int height,
+                                                   bool isButtonDown, int buttonX, int buttonY,
+                                                   int buttonW, int buttonH, juce::ComboBox& box)
+{
+    juce::ignoreUnused (buttonX, buttonY, buttonW, buttonH);
+
+    const auto bounds = juce::Rectangle<float> (0.5f, 0.5f,
+                                                 (float) width - 1.0f, (float) height - 1.0f);
+    const float cornerRadius = (float) height * 0.42f;
+    g.setColour (box.findColour (juce::ComboBox::backgroundColourId)
+                     .interpolatedWith (juce::Colour (0xff252a34), isButtonDown ? 0.8f : 0.0f));
+    g.fillRoundedRectangle (bounds, cornerRadius);
+    g.setColour (box.findColour (juce::ComboBox::outlineColourId));
+    g.drawRoundedRectangle (bounds, cornerRadius, 1.3f);
+
+    const auto centreX = (float) width - (float) height * 0.62f;
+    const auto centreY = (float) height * 0.5f;
+    juce::Path arrow;
+    arrow.startNewSubPath (centreX - 4.0f, centreY - 1.5f);
+    arrow.lineTo (centreX, centreY + 2.5f);
+    arrow.lineTo (centreX + 4.0f, centreY - 1.5f);
+    g.setColour (box.findColour (juce::ComboBox::arrowColourId));
+    g.strokePath (arrow, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved,
+                                                juce::PathStrokeType::rounded));
 }
 
 //==============================================================================
@@ -198,6 +225,7 @@ ChordSuggesterAudioProcessorEditor::ChordSuggesterAudioProcessorEditor (ChordSug
 
     keySelector.setSelectedId (keyRoot + 1, juce::dontSendNotification);
     keySelector.setJustificationType (juce::Justification::centred);
+    keySelector.setLookAndFeel (&keySelectorLookAndFeel);
     keySelector.setColour (juce::ComboBox::backgroundColourId, headerColour);
     keySelector.setColour (juce::ComboBox::textColourId, juce::Colour (0xfff1f3f6));
     keySelector.setColour (juce::ComboBox::outlineColourId, juce::Colour (0xff394150));
@@ -211,6 +239,7 @@ ChordSuggesterAudioProcessorEditor::ChordSuggesterAudioProcessorEditor (ChordSug
 
 ChordSuggesterAudioProcessorEditor::~ChordSuggesterAudioProcessorEditor()
 {
+    keySelector.setLookAndFeel (nullptr);
 }
 
 //==============================================================================
@@ -238,18 +267,18 @@ void ChordSuggesterAudioProcessorEditor::updateKeySelection()
 
 juce::Rectangle<int> ChordSuggesterAudioProcessorEditor::currentChordBounds() const
 {
-    return { 24, 120, leftColumnWidth - 48, 148 };
+    return { 24, 126, leftColumnWidth - 48, 302 };
 }
 
 juce::Rectangle<int> ChordSuggesterAudioProcessorEditor::transitionBounds() const
 {
-    return { 24, 294, leftColumnWidth - 48, 96 };
+    return { 24, 438, leftColumnWidth - 48, 62 };
 }
 
 juce::Rectangle<int> ChordSuggesterAudioProcessorEditor::rowBounds (int index) const
 {
     const int left = leftColumnWidth + 28;
-    const int top = 114;
+    const int top = 122;
     const int bottom = getHeight() - 100;
     const int gap = 8;
     const int count = juce::jmax (1, (int) suggestions.size());
@@ -290,28 +319,41 @@ void ChordSuggesterAudioProcessorEditor::paint (juce::Graphics& g)
                 juce::Justification::centredLeft);
     g.setColour (secondaryText);
     g.setFont (juce::FontOptions (16.0f));
-    g.drawText ("Key", getWidth() - 250, 16, 48, 32, juce::Justification::centredRight);
+    g.drawText ("Key", getWidth() - 250, 20, 48, 32, juce::Justification::centredRight);
+
 
     g.setColour (secondaryText);
     g.setFont (juce::FontOptions (18.0f).withStyle ("Bold"));
-    g.drawText ("Your chord", 24, 80, leftColumnWidth - 48, 28,
+    g.drawText ("Your chord", 24, 88, leftColumnWidth - 48, 26,
                 juce::Justification::centredLeft);
 
     const auto current = currentChordBounds();
-    g.setColour (juce::Colour (0xff222630));
-    g.fillRoundedRectangle (current.toFloat(), 13.0f);
+    juce::Path currentOutline;
+    currentOutline.addRoundedRectangle (current.toFloat(), 14.0f);
+    const float dashPattern[] { 7.0f, 5.0f };
+    juce::Path dashedOutline;
+    juce::PathStrokeType (2.0f).createDashedStroke (dashedOutline, currentOutline, dashPattern, 2);
     g.setColour (juce::Colour (0xff444c5c));
-    g.drawRoundedRectangle (current.toFloat(), 13.0f, 1.5f);
+    g.strokePath (dashedOutline, juce::PathStrokeType (2.0f));
+
+    const auto chordTile = current.withSizeKeepingCentre (208, 190);
     g.setColour (juce::Colour (0xfff1f3f6));
-    g.setFont (juce::FontOptions (44.0f).withStyle ("Bold"));
-    g.drawText (currentChord.name, current.withTrimmedTop (28).withHeight (56),
+    g.fillRoundedRectangle (chordTile.toFloat(), 16.0f);
+    g.setColour (juce::Colour (0xff151820));
+    g.setFont (juce::FontOptions (50.0f).withStyle ("Bold"));
+    g.drawText (currentChord.name, chordTile.withTrimmedTop (20).withHeight (62),
                 juce::Justification::centred);
     g.setFont (juce::FontOptions (19.0f).withStyle ("Bold"));
-    g.drawText (currentChord.fullName, current.withTrimmedTop (88).withHeight (28),
+    g.drawText (currentChord.fullName, chordTile.withTrimmedTop (88).withHeight (28),
                 juce::Justification::centred);
+    g.setColour (juce::Colour (0xff454b56));
+    g.setFont (juce::FontOptions (16.0f));
+    g.drawText (noteNames (currentChord.notes, keyRoot == 1 || keyRoot == 3 || keyRoot == 5
+                            || keyRoot == 8 || keyRoot == 10),
+                chordTile.withTrimmedTop (122).withHeight (24), juce::Justification::centred);
     g.setColour (secondaryText);
-    g.setFont (juce::FontOptions (14.0f));
-    g.drawText ("Click to replay", current.withTrimmedTop (120).withHeight (22),
+    g.setFont (juce::FontOptions (15.0f));
+    g.drawText ("Click to replay", current.withTrimmedTop (current.getHeight() - 34).withHeight (22),
                 juce::Justification::centred);
 
     const auto transition = transitionBounds();
@@ -320,34 +362,32 @@ void ChordSuggesterAudioProcessorEditor::paint (juce::Graphics& g)
     g.setColour (juce::Colour (0xff353d4b));
     g.drawRoundedRectangle (transition.toFloat(), 12.0f, 1.0f);
     g.setColour (secondaryText);
-    g.setFont (juce::FontOptions (15.0f).withStyle ("Bold"));
-    g.drawText ("Preview next", transition.withTrimmedTop (5).withHeight (22),
+    g.setFont (juce::FontOptions (14.0f).withStyle ("Bold"));
+    g.drawText ("Preview next", transition.withTrimmedTop (1).withHeight (18),
                 juce::Justification::centred);
     g.setColour (previewedChord ? juce::Colour (0xfff1f3f6) : secondaryText);
-    g.setFont (juce::FontOptions (25.0f));
+    g.setFont (juce::FontOptions (20.0f));
     const auto transitionLabel = juce::String (currentChord.name)
         + juce::String::fromUTF8 (" \xe2\x86\x92 ")
         + (previewedChord ? juce::String (previewedChord->name)
                           : juce::String::fromUTF8 ("\xe2\x80\x94"));
-    g.drawText (transitionLabel, transition.withTrimmedTop (26).withHeight (40),
+    g.drawText (transitionLabel, transition.withTrimmedTop (18).withHeight (25),
                 juce::Justification::centred);
     g.setColour (secondaryText);
-    g.setFont (juce::FontOptions (12.5f));
+    g.setFont (juce::FontOptions (11.5f));
     g.drawText (previewedChord ? "Click to hear the transition" : "Preview a recommendation first",
-                20, 314, 280, 22,
+                transition.withTrimmedTop (43).withHeight (16),
                 juce::Justification::centred);
 
     const auto keyboardArea = juce::Rectangle<int> (24, getHeight() - 112, leftColumnWidth - 48, 88);
     g.setColour (secondaryText);
     g.setFont (juce::FontOptions (17.0f).withStyle ("Bold"));
-    g.drawText ("MIDI keyboard", 24, keyboardArea.getY() - 30, leftColumnWidth - 48, 24,
+    g.drawText ("MIDI keyboard", 24, keyboardArea.getY() - 28, leftColumnWidth - 48, 22,
                 juce::Justification::centredLeft);
-    g.setColour (juce::Colour (0xff353d4b));
-    g.drawRoundedRectangle (keyboardArea.toFloat(), 8.0f, 1.0f);
 
     g.setColour (secondaryText);
     g.setFont (juce::FontOptions (18.0f).withStyle ("Bold"));
-    g.drawText ("Chords to try next", leftColumnWidth + 28, 78,
+    g.drawText ("Chords to try next", leftColumnWidth + 28, 86,
                 getWidth() - leftColumnWidth - 52, 30, juce::Justification::centredLeft);
 
     for (int i = 0; i < (int) suggestions.size(); ++i)
@@ -362,22 +402,13 @@ void ChordSuggesterAudioProcessorEditor::paint (juce::Graphics& g)
         g.fillRoundedRectangle (row.toFloat(), 12.0f);
 
         g.setColour (juce::Colours::white);
-        g.setFont (juce::FontOptions (25.0f).withStyle ("Bold"));
-        g.drawText (suggestion.chord.name, row.withTrimmedLeft (20).withWidth (92),
+        g.setFont (juce::FontOptions (28.0f).withStyle ("Bold"));
+        g.drawText (suggestion.chord.name, row.withTrimmedLeft (20).withWidth (118),
                     juce::Justification::centredLeft);
 
-        const int detailsX = row.getX() + 116;
-        const int detailsWidth = juce::jmax (70, row.getWidth() - 290);
-        g.setFont (juce::FontOptions (16.0f).withStyle ("Bold"));
-        g.drawText (suggestion.chord.fullName, detailsX, row.getY() + 8, detailsWidth, 22,
-                    juce::Justification::centredLeft);
-        g.setFont (juce::FontOptions (14.0f));
-        const bool useFlats = keyRoot == 1 || keyRoot == 3 || keyRoot == 5 || keyRoot == 8 || keyRoot == 10;
-        const auto details = noteNames (suggestion.chord.notes, useFlats)
-            + juce::String::fromUTF8 (" \xc2\xb7 shares ")
-            + juce::String (suggestion.sharedNotes)
-            + (suggestion.sharedNotes == 1 ? " note" : " notes");
-        g.drawText (details, detailsX, row.getY() + 31, detailsWidth, 20,
+        g.setFont (juce::FontOptions (19.0f).withStyle ("Bold"));
+        g.drawText (suggestion.chord.fullName, row.getX() + 126, row.getY(),
+                    juce::jmax (80, row.getWidth() - 200), row.getHeight(),
                     juce::Justification::centredLeft);
 
         const int playDiameter = juce::jmin (42, row.getHeight() - 12);
@@ -388,8 +419,6 @@ void ChordSuggesterAudioProcessorEditor::paint (juce::Graphics& g)
         g.fillEllipse (playButton);
         g.setColour (juce::Colours::white);
         g.setFont (juce::FontOptions (15.0f).withStyle ("Bold"));
-        g.drawText (safetyDescription (suggestion.safety), row.getRight() - 144, row.getY(),
-                    92, row.getHeight(), juce::Justification::centredRight);
         juce::Path playIcon;
         playIcon.addTriangle (playButton.getCentreX() - 3.0f, playButton.getCentreY() - 7.0f,
                               playButton.getCentreX() - 3.0f, playButton.getCentreY() + 7.0f,
@@ -424,8 +453,10 @@ void ChordSuggesterAudioProcessorEditor::paint (juce::Graphics& g)
 
 void ChordSuggesterAudioProcessorEditor::resized()
 {
-    const int selectorWidth = 176;
-    keySelector.setBounds (getWidth() - selectorWidth - 24, 13, selectorWidth, 38);
+    const int selectorWidth = 148;
+    const int selectorHeight = 34;
+    keySelector.setBounds (getWidth() - selectorWidth - 24, (headerHeight - selectorHeight) / 2,
+                           selectorWidth, selectorHeight);
 
     const auto keyboardArea = juce::Rectangle<int> (24, getHeight() - 112,
                                                      leftColumnWidth - 48, 88);

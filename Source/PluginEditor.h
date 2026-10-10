@@ -51,6 +51,14 @@ private:
     PlaybackTimer playbackTimer { *this };
 };
 
+class RoundedKeySelectorLookAndFeel final : public juce::LookAndFeel_V4
+{
+public:
+    void drawComboBox (juce::Graphics& g, int width, int height, bool isButtonDown,
+                       int buttonX, int buttonY, int buttonW, int buttonH,
+                       juce::ComboBox& box) override;
+};
+
 //==============================================================================
 /**
 */
@@ -87,6 +95,7 @@ private:
     // This reference is provided as a quick way for your editor to
     // access the processor object that created it.
     ChordSuggesterAudioProcessor& audioProcessor;
+    RoundedKeySelectorLookAndFeel keySelectorLookAndFeel;
     juce::ComboBox keySelector;
     ChordMidiKeyboard midiKeyboard;
 
