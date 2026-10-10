@@ -201,7 +201,9 @@ public:
 private:
     void scrollBarMoved (juce::ScrollBar*, double) override { repaint(); }
     juce::Rectangle<int> gridArea() const { return { 60, 32, std::max (1, getWidth() - 76), std::max (1, getHeight() - 48) }; }
-    double beatWidth() const { return std::max (48.0, gridArea().getWidth() / 16.0); }
+    // The bars stretch so the whole phrase fills the grid's width, however many bars there are.
+    // Scrolling only starts if the window is so narrow that a beat would be thinner than 24 pixels.
+    double beatWidth() const { return std::max (24.0, gridArea().getWidth() / (phrase.lengthBeats > 0.0 ? phrase.lengthBeats : 16.0)); }
     double resizeWidth (const melody::Note& note) const { return std::min (7.0, double (noteBounds (note).getWidth()) / 3.0); }
     int hit (juce::Point<float> point) const
     {

@@ -183,6 +183,32 @@ void ChordMidiKeyboard::drawBlackNote (int midiNoteNumber, juce::Graphics& g,
 
 
 
+void RoundedKeySelectorLookAndFeel::drawComboBox (juce::Graphics& g, int width, int height,
+                                                   bool isButtonDown, int buttonX, int buttonY,
+                                                   int buttonW, int buttonH, juce::ComboBox& box)
+{
+    juce::ignoreUnused (buttonX, buttonY, buttonW, buttonH);
+
+    const auto bounds = juce::Rectangle<float> (0.5f, 0.5f,
+                                                 (float) width - 1.0f, (float) height - 1.0f);
+    const float cornerRadius = (float) height * 0.42f;
+    g.setColour (box.findColour (juce::ComboBox::backgroundColourId)
+                     .interpolatedWith (juce::Colour (0xff252a34), isButtonDown ? 0.8f : 0.0f));
+    g.fillRoundedRectangle (bounds, cornerRadius);
+    g.setColour (box.findColour (juce::ComboBox::outlineColourId));
+    g.drawRoundedRectangle (bounds, cornerRadius, 1.3f);
+
+    const auto centreX = (float) width - (float) height * 0.62f;
+    const auto centreY = (float) height * 0.5f;
+    juce::Path arrow;
+    arrow.startNewSubPath (centreX - 4.0f, centreY - 1.5f);
+    arrow.lineTo (centreX, centreY + 2.5f);
+    arrow.lineTo (centreX + 4.0f, centreY - 1.5f);
+    g.setColour (box.findColour (juce::ComboBox::arrowColourId));
+    g.strokePath (arrow, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved,
+                                                juce::PathStrokeType::rounded));
+}
+
 //==============================================================================
 ChordSuggesterAudioProcessorEditor::ChordSuggesterAudioProcessorEditor (ChordSuggesterAudioProcessor& p)
     : AudioProcessorEditor (&p), audioProcessor (p), midiKeyboard (p.getMidiKeyboardState())
@@ -199,6 +225,7 @@ ChordSuggesterAudioProcessorEditor::ChordSuggesterAudioProcessorEditor (ChordSug
 
     keySelector.setSelectedId (keyRoot + 1, juce::dontSendNotification);
     keySelector.setJustificationType (juce::Justification::centred);
+    keySelector.setLookAndFeel (&keySelectorLookAndFeel);
     keySelector.setColour (juce::ComboBox::backgroundColourId, headerColour);
     keySelector.setColour (juce::ComboBox::textColourId, juce::Colour (0xfff1f3f6));
     keySelector.setColour (juce::ComboBox::outlineColourId, juce::Colour (0xff394150));
@@ -237,6 +264,14 @@ ChordSuggesterAudioProcessorEditor::ChordSuggesterAudioProcessorEditor (ChordSug
     timingChoice.setComponentID ("timing");
     addAndMakeVisible (progressionDisplay);
     addAndMakeVisible (pianoRoll);
+
+    // Dragging this handle writes the melody (plus the chords, if "With chords" is on)
+    // to a MIDI file and hands it to the DAW.
+    addAndMakeVisible (melodyDragHandle);
+    melodyDragHandle.createFile = [this]
+    {
+        return midi_writer::writePhraseToTempFile (phrase, backingButton.getToggleState());
+    };
     progressionDisplay.setMultiLine (false);
     progressionDisplay.setReadOnly (true);
     progressionDisplay.setColour (juce::TextEditor::backgroundColourId, juce::Colour (0xff20252d));
@@ -247,7 +282,7 @@ ChordSuggesterAudioProcessorEditor::ChordSuggesterAudioProcessorEditor (ChordSug
             scaleChoice.addItem (melody::Scale { root, mode == 1 }.name(), 2 + mode * 12 + root);
     scaleChoice.setSelectedId (1, juce::dontSendNotification);
     scaleChoice.onChange = [this] { invalidatePhrase(); repaint(); };
-    for (int bars : { 1, 2, 4, 8 }) barsChoice.addItem (juce::String (bars), bars);
+    for (int bars : { 1, 2, 3, 4 }) barsChoice.addItem (juce::String (bars), bars);
     barsChoice.setSelectedId (4, juce::dontSendNotification);
     barsChoice.onChange = [this] { invalidatePhrase(); repaint(); };
     timingChoice.addItem ("1/4 notes", 1);
@@ -312,6 +347,7 @@ ChordSuggesterAudioProcessorEditor::ChordSuggesterAudioProcessorEditor (ChordSug
 
 ChordSuggesterAudioProcessorEditor::~ChordSuggesterAudioProcessorEditor()
 {
+    keySelector.setLookAndFeel (nullptr);
     audioProcessor.stopPreview();
 }
 
@@ -338,6 +374,7 @@ void ChordSuggesterAudioProcessorEditor::timerCallback()
         else if (seenPlayhead) { melodyPlaying = false; playButton.setButtonText ("Play"); }
     }
     pianoRoll.setPlayhead (melodyPlaying ? beat : -1);
+    melodyDragHandle.setEnabled (! phrase.notes.empty());   // nothing to drag until there is a melody
 }
 
 void ChordSuggesterAudioProcessorEditor::switchTab (bool melodyView)
@@ -356,6 +393,7 @@ void ChordSuggesterAudioProcessorEditor::switchTab (bool melodyView)
     for (auto* box : { &scaleChoice, &barsChoice, &timingChoice }) box->setVisible (showingMelody);
     progressionDisplay.setVisible (showingMelody);
     pianoRoll.setVisible (showingMelody);
+    melodyDragHandle.setVisible (showingMelody);
     setMouseCursor (juce::MouseCursor::NormalCursor);
     repaint();
 }
@@ -441,6 +479,7 @@ void ChordSuggesterAudioProcessorEditor::setCurrentChord (const chords::Chord& n
 
     currentChord = chosen;
     previewedChord.reset();
+    dropMessage.clear();
     suggestions = chords::suggest (currentChord, keyRoot);
     updateMoreChords();
     repaint();
@@ -675,10 +714,10 @@ void ChordSuggesterAudioProcessorEditor::paint (juce::Graphics& g)
                 juce::Justification::centredLeft);
 
     const auto current = currentChordBounds();
-    g.setColour (juce::Colour (0xff222630));
+    g.setColour (midiDragHovering ? juce::Colour (0xff253348) : juce::Colour (0xff222630));
     g.fillRoundedRectangle (current.toFloat(), 13.0f);
-    g.setColour (juce::Colour (0xff444c5c));
-    g.drawRoundedRectangle (current.toFloat(), 13.0f, 1.5f);
+    g.setColour (midiDragHovering ? accentBlue : juce::Colour (0xff444c5c));
+    g.drawRoundedRectangle (current.toFloat(), 13.0f, midiDragHovering ? 2.5f : 1.5f);
     g.setColour (juce::Colour (0xfff1f3f6));
     g.setFont (juce::FontOptions (44.0f).withStyle ("Bold"));
     g.drawText (currentChord.name, current.withTrimmedTop (28).withHeight (56),
@@ -688,7 +727,10 @@ void ChordSuggesterAudioProcessorEditor::paint (juce::Graphics& g)
                 juce::Justification::centred);
     g.setColour (secondaryText);
     g.setFont (juce::FontOptions (14.0f));
-    g.drawText ("Click to replay", current.withTrimmedTop (120).withHeight (22),
+    const auto currentChordHint = midiDragHovering ? juce::String ("Drop to use this clip's first chord")
+                                : dropMessage.isNotEmpty() ? dropMessage
+                                : juce::String::fromUTF8 ("Click to replay \xc2\xb7 or drop a MIDI clip here");
+    g.drawText (currentChordHint, current.withTrimmedTop (120).withHeight (22).reduced (10, 0),
                 juce::Justification::centred);
 
     const auto transition = transitionBounds();
@@ -804,6 +846,7 @@ void ChordSuggesterAudioProcessorEditor::resized()
     melodyTab.setBounds (400, 16, 110, 40);
     scaleChoice.setBounds (getWidth() - 285, 22, 261, 32);
     generateButton.setBounds (200, 86, 180, 36);
+    melodyDragHandle.setBounds (392, 86, 172, 36);
     barsChoice.setBounds (getWidth() - 325, 86, 85, 36);
     timingChoice.setBounds (getWidth() - 150, 86, 126, 36);
     progressionDisplay.setBounds (24, 150, getWidth() - 250, 26);
@@ -877,4 +920,105 @@ void ChordSuggesterAudioProcessorEditor::mouseExit (const juce::MouseEvent&)
         hoveredRow = -1;
         repaint();
     }
+}
+
+//==============================================================================
+// Dropping a MIDI file on the window
+
+namespace
+{
+// MIDI files (.mid) and Studio One Musicloops (.musicloop).
+bool isMidiFile (const juce::String& path)
+{
+    return midi_reader::canRead (juce::File (path));
+}
+
+// The different notes in a group, lowest first, as text with a dot between each one.
+// A note played in more than one octave is only listed once.
+juce::String playedNoteNames (std::vector<int> notes, bool useFlats)
+{
+    std::sort (notes.begin(), notes.end());
+
+    juce::String result;
+    bool listed[12] = {};
+
+    for (int note : notes)
+    {
+        const int pitch = ((note % 12) + 12) % 12;
+        if (listed[pitch])
+            continue;
+
+        listed[pitch] = true;
+
+        if (result.isNotEmpty())
+            result += juce::String::fromUTF8 (" \xc2\xb7 ");
+
+        result += juce::String::fromUTF8 (chords::noteName (pitch, useFlats).c_str());
+    }
+
+    return result;
+}
+}
+
+bool ChordSuggesterAudioProcessorEditor::isInterestedInFileDrag (const juce::StringArray& files)
+{
+    for (const auto& path : files)
+        if (isMidiFile (path))
+            return true;
+
+    return false;
+}
+
+void ChordSuggesterAudioProcessorEditor::fileDragEnter (const juce::StringArray&, int, int)
+{
+    midiDragHovering = true;
+    repaint();
+}
+
+void ChordSuggesterAudioProcessorEditor::fileDragExit (const juce::StringArray&)
+{
+    midiDragHovering = false;
+    repaint();
+}
+
+void ChordSuggesterAudioProcessorEditor::filesDropped (const juce::StringArray& files, int, int)
+{
+    midiDragHovering = false;
+
+    for (const auto& path : files)
+    {
+        if (! isMidiFile (path))
+            continue;
+
+        const juce::File file (path);
+        const std::vector<int> played = midi_reader::firstChordNotes (file);
+        const bool keyUsesFlats = keyRoot == 1 || keyRoot == 3 || keyRoot == 5 || keyRoot == 8 || keyRoot == 10;
+        chords::Chord dropped;
+
+        if (chords::chordFromNotes (played, keyRoot, dropped))
+        {
+            setCurrentChord (dropped);
+
+            // Play it and light up the keyboard, the same as clicking "Your chord".
+            midiKeyboard.showChordPlayback (currentChord.notes);
+            audioProcessor.previewChord (currentChord);
+
+            // Spell the notes to match the chord's name: flats for "Ab minor", sharps for "F# major".
+            const juce::String name (dropped.name);
+            const bool useFlats = name.substring (1, 2) == "b" || (keyUsesFlats && name.substring (1, 2) != "#");
+            dropMessage = "Notes played: " + playedNoteNames (played, useFlats);
+        }
+        else if (played.empty())
+        {
+            dropMessage = "No notes found in " + file.getFileName();
+        }
+        else
+        {
+            dropMessage = "No chord in these notes: " + playedNoteNames (played, keyUsesFlats);
+        }
+
+        break;   // only the first MIDI file is used
+    }
+
+    repaint();
 }

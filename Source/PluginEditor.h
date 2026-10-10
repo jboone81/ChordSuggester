@@ -11,6 +11,8 @@
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
 #include "ChordEngine.h"
+#include "MidiChordReader.h"
+#include "MidiDragOut.h"
 #include <optional>
 #include "PianoRoll.h"
 
@@ -64,10 +66,20 @@ private:
     PlaybackTimer playbackTimer { *this };
 };
 
+class RoundedKeySelectorLookAndFeel final : public juce::LookAndFeel_V4
+{
+public:
+    void drawComboBox (juce::Graphics& g, int width, int height, bool isButtonDown,
+                       int buttonX, int buttonY, int buttonW, int buttonH,
+                       juce::ComboBox& box) override;
+};
+
 //==============================================================================
 /**
 */
-class ChordSuggesterAudioProcessorEditor  : public juce::AudioProcessorEditor, private juce::Timer
+class ChordSuggesterAudioProcessorEditor  : public juce::AudioProcessorEditor,
+                                            public juce::FileDragAndDropTarget,
+                                            private juce::Timer
 {
 public:
     ChordSuggesterAudioProcessorEditor (ChordSuggesterAudioProcessor&);
@@ -81,6 +93,13 @@ public:
     void mouseDoubleClick (const juce::MouseEvent&) override;
     void mouseMove (const juce::MouseEvent&) override;
     void mouseExit (const juce::MouseEvent&) override;
+
+    // Dropping a MIDI file (.mid) or a Studio One Musicloop (.musicloop) anywhere on
+    // the window sets "Your chord" to the first chord in that file.
+    bool isInterestedInFileDrag (const juce::StringArray& files) override;
+    void fileDragEnter (const juce::StringArray& files, int x, int y) override;
+    void fileDragExit (const juce::StringArray& files) override;
+    void filesDropped (const juce::StringArray& files, int x, int y) override;
 
 private:
     void updateKeySelection();
@@ -116,6 +135,7 @@ private:
     // This reference is provided as a quick way for your editor to
     // access the processor object that created it.
     ChordSuggesterAudioProcessor& audioProcessor;
+    RoundedKeySelectorLookAndFeel keySelectorLookAndFeel;
     juce::ComboBox keySelector;
     juce::ComboBox moreChords;
     std::vector<chords::Chord> moreChordOptions;   // item ID n is moreChordOptions[n - 1]
@@ -140,6 +160,9 @@ private:
     juce::ComboBox scaleChoice, barsChoice, timingChoice;
     juce::TextEditor progressionDisplay;
     bool melodyPlaying = false, seenPlayhead = false;
+    MidiDragHandle melodyDragHandle;   // on the Melody tab: drag the suggested melody out to a DAW track
+    bool midiDragHovering = false;   // true while a MIDI file is being dragged over the window
+    juce::String dropMessage;        // shown under the chord after a drop, e.g. "From clip.mid"
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ChordSuggesterAudioProcessorEditor)
 };
