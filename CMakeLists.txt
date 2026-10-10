@@ -31,3 +31,12 @@
    target_link_libraries(ChordSuggester
        PRIVATE juce::juce_audio_utils
        PUBLIC juce::juce_recommended_config_flags)
+
+   option(CHORDSUGGESTER_BUILD_TESTS "Build chord playback tests" OFF)
+   if(CHORDSUGGESTER_BUILD_TESTS)
+       enable_testing()
+       add_executable(ChordPreviewTests Tests/ChordPreviewTests.cpp)
+       target_include_directories(ChordPreviewTests PRIVATE Source)
+       target_compile_features(ChordPreviewTests PRIVATE cxx_std_17)
+       add_test(NAME ChordPreviewTests COMMAND ChordPreviewTests)
+   endif()
