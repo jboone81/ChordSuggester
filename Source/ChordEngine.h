@@ -38,6 +38,8 @@ struct Suggestion
     float chance = 0.0f;       // how often real songs make this move (0.29 = 29% of the time)
 
     float safety = 0.0f;   // the blend of the two: 1 = safest (most blue), 0 = most dramatic (most gray)
+
+    bool inKey = true;     // false = this chord uses a note from outside the key
 };
 
 inline std::string noteName (int note, bool useFlats = false)
@@ -132,31 +134,55 @@ inline int dataState (const Chord& chord, int keyRoot)
     return type < 0 ? -1 : data::stateOf (chord.notes[0] - keyRoot, type);
 }
 
-// The main function: the chords to try next, safest first.
-//
-// dataWeight sets the mix: 0 = theory only (smooth note movement),
-// 1 = data only (what real songs do), 0.5 = an even blend of the two.
-inline std::vector<Suggestion> suggest (const Chord& current, int keyRoot, float dataWeight = 0.5f)
+// True if two chords are made of the same three notes.
+inline bool sameNotes (const Chord& first, const Chord& second)
 {
-    std::vector<Suggestion> result;
+    std::array<int, 3> a = first.notes, b = second.notes;
+    std::sort (a.begin(), a.end());
+    std::sort (b.begin(), b.end());
+    return a == b;
+}
 
-    for (const auto& candidate : chordsInMajorKey (keyRoot))
-    {
-        std::array<int, 3> a = current.notes, b = candidate.notes;
-        std::sort (a.begin(), a.end());
-        std::sort (b.begin(), b.end());
-        if (a == b)
-            continue;   // don't suggest the chord you're already on
+// Builds a chord from its place in the real-song table (the opposite of dataState).
+inline Chord chordFromDataState (int state, int keyRoot)
+{
+    const int k = ((keyRoot % 12) + 12) % 12;
+    const int stepsAboveKeyNote = state / 3;
+    const int type = state % 3;   // 0 major, 1 minor, 2 diminished
+    const int root = (k + stepsAboveKeyNote) % 12;
 
-        Suggestion s;
-        s.chord = candidate;
-        s.sharedNotes = sharedNotes (current, candidate);
-        s.movement = movement (current, candidate);
-        result.push_back (s);
-    }
+    // How to spell the root. Notes just below a scale note are written as flats
+    // (Bb, Eb and Ab in the key of C), the note between the 4th and 5th as a sharp
+    // (F# in the key of C), and everything else follows the key.
+    const bool keyUsesFlats = (k == 5 || k == 10 || k == 3 || k == 8 || k == 1);
+    const bool useFlats = (stepsAboveKeyNote == 1 || stepsAboveKeyNote == 3
+                           || stepsAboveKeyNote == 8 || stepsAboveKeyNote == 10) ? true
+                        : (stepsAboveKeyNote == 6) ? false
+                        : keyUsesFlats;
+    const std::string rootName = noteName (root, useFlats);
 
+    Chord c;
+    c.name     = rootName + (type == 0 ? "" : type == 1 ? "m" : "dim");
+    c.fullName = rootName + (type == 0 ? " major" : type == 1 ? " minor" : " diminished");
+    c.notes    = { root, (root + (type == 0 ? 4 : 3)) % 12, (root + (type == 2 ? 6 : 7)) % 12 };
+    return c;
+}
+
+// If real songs rarely use a chord, there isn't enough evidence to go on.
+static constexpr int minimumTimesSeenInData = 100;
+
+// Scores every candidate against the current chord, then sorts them safest first.
+// Used by both suggest() and connectedChords() below.
+inline void scoreAndSort (std::vector<Suggestion>& result, const Chord& current, int keyRoot, float dataWeight)
+{
     if (result.empty())
-        return result;
+        return;
+
+    for (auto& s : result)
+    {
+        s.sharedNotes = sharedNotes (current, s.chord);
+        s.movement = movement (current, s.chord);
+    }
 
     // Theory score: the smoothest move gets 1, the biggest jump gets 0.
     int lowest = result.front().movement, highest = result.front().movement;
@@ -171,11 +197,9 @@ inline std::vector<Suggestion> suggest (const Chord& current, int keyRoot, float
                                            : 1.0f - (float) (s.movement - lowest) / (float) (highest - lowest);
 
     // Data score: the most common next chord gets 1, the rest are measured against it.
-    // If real songs rarely use the current chord, there isn't enough evidence to go on,
-    // so fall back to theory alone.
-    const int minimumTimesSeen = 100;
+    // With too little evidence for the current chord, fall back to theory alone.
     const int from = dataState (current, keyRoot);
-    const bool haveData = from >= 0 && data::majorKeyTimesSeen[from] >= minimumTimesSeen;
+    const bool haveData = from >= 0 && data::majorKeyTimesSeen[from] >= minimumTimesSeenInData;
 
     if (haveData)
     {
@@ -213,7 +237,84 @@ inline std::vector<Suggestion> suggest (const Chord& current, int keyRoot, float
             return x.safety > y.safety;
         return x.movement < y.movement;
     });
+}
 
+// The main function: the chords in the key to try next, safest first.
+//
+// dataWeight sets the mix: 0 = theory only (smooth note movement),
+// 1 = data only (what real songs do), 0.5 = an even blend of the two.
+inline std::vector<Suggestion> suggest (const Chord& current, int keyRoot, float dataWeight = 0.5f)
+{
+    std::vector<Suggestion> result;
+
+    for (const auto& candidate : chordsInMajorKey (keyRoot))
+    {
+        if (sameNotes (candidate, current))
+            continue;   // don't suggest the chord you're already on
+
+        Suggestion s;
+        s.chord = candidate;
+        s.inKey = true;
+        result.push_back (s);
+    }
+
+    scoreAndSort (result, current, keyRoot, dataWeight);
+    return result;
+}
+
+// The longer list, meant for a "more chords" drop-down menu: every chord in the key,
+// plus chords from OUTSIDE the key that real songs do follow the current chord with.
+//
+// Each entry has inKey set (true = in the key, false = outside it), so the interface
+// can label or group the outside ones. The list is sorted safest first, the same way
+// as suggest(), and the scores are worked out across this whole list.
+//
+// minimumChance is how common an outside chord must be to make the list:
+// 0.01 means it follows the current chord at least 1% of the time in real songs.
+inline std::vector<Suggestion> connectedChords (const Chord& current, int keyRoot,
+                                                float dataWeight = 0.5f, float minimumChance = 0.01f)
+{
+    const std::vector<Chord> inKeyChords = chordsInMajorKey (keyRoot);
+    std::vector<Suggestion> result;
+
+    for (const auto& candidate : inKeyChords)
+    {
+        if (sameNotes (candidate, current))
+            continue;
+
+        Suggestion s;
+        s.chord = candidate;
+        s.inKey = true;
+        result.push_back (s);
+    }
+
+    const int from = dataState (current, keyRoot);
+
+    if (from >= 0 && data::majorKeyTimesSeen[from] >= minimumTimesSeenInData)
+    {
+        for (int state = 0; state < data::numStates; ++state)
+        {
+            if (data::chanceOfNext (false, from, state) < minimumChance)
+                continue;
+
+            const Chord candidate = chordFromDataState (state, keyRoot);
+
+            if (sameNotes (candidate, current))
+                continue;
+
+            const bool alreadyListed = std::any_of (inKeyChords.begin(), inKeyChords.end(),
+                                                    [&candidate] (const Chord& c) { return sameNotes (c, candidate); });
+            if (alreadyListed)
+                continue;
+
+            Suggestion s;
+            s.chord = candidate;
+            s.inKey = false;
+            result.push_back (s);
+        }
+    }
+
+    scoreAndSort (result, current, keyRoot, dataWeight);
     return result;
 }
 
