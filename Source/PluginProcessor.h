@@ -37,6 +37,7 @@ public:
     void previewNote (int midi);
     double melodyPlayhead() const;
     void stopPreview();
+    juce::MidiKeyboardState& getMidiKeyboardState() noexcept { return midiKeyboardState; }
 
     //==============================================================================
     juce::AudioProcessorEditor* createEditor() override;
@@ -63,6 +64,7 @@ public:
 
 private:
     PreviewPlayback preview;
+    juce::MidiKeyboardState midiKeyboardState;
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ChordSuggesterAudioProcessor)
 };

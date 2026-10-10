@@ -144,8 +144,8 @@ void ChordSuggesterAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
         buffer.clear (i, 0, buffer.getNumSamples());
 
     // Generate each sample once, then mix the same preview into every output.
-    // Incoming audio and MIDI remain untouched.
-    juce::ignoreUnused (midiMessages);
+    // Keyboard clicks are queued by MidiKeyboardState and merged with incoming MIDI.
+    midiKeyboardState.processNextMidiBuffer (midiMessages, 0, buffer.getNumSamples(), true);
     preview.beginBlock();
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
     {

@@ -22,7 +22,7 @@ static juce::TextEditor& history (juce::Component& editor)
 static juce::MouseEvent event (juce::Component& editor, int count)
 {
     const auto now = juce::Time::getCurrentTime();
-    const juce::Point<float> point { 350.0f, 112.0f };
+    const juce::Point<float> point { 430.0f, 140.0f };
     return { juce::Desktop::getInstance().getMainMouseSource(), point,
              juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier),
              1.0f, 0.0f, 0.0f, 0.0f, 0.0f, &editor, &editor, now, point, now, count, false };
@@ -104,6 +104,15 @@ int main()
         if (auto* choice = dynamic_cast<juce::ComboBox*> (child); choice != nullptr && choice->getComponentID() == "scale")
             check (choice->getSelectedId() == 1 && choice->getText() != "Estimated scale", "Estimated key display updates without losing automatic selection");
     snapshot (editor, "chords-tab.png");
+    for (auto* child : editor.getChildren())
+        if (auto* choice = dynamic_cast<juce::ComboBox*> (child); choice != nullptr && choice->getComponentID().isEmpty())
+        {
+            choice->setSelectedId (3, juce::dontSendNotification);
+            choice->onChange();
+            check (history (editor).getText() == confirmed, "Chord key selector preserves confirmed history");
+            choice->setSelectedId (1, juce::dontSendNotification);
+            choice->onChange();
+        }
     button (editor, "Melody").onClick();
     check (history (editor).getText() == confirmed, "Tab switch retains history");
     check (! button (editor, "Play").isEnabled(), "Play disabled before generation");
@@ -175,6 +184,14 @@ int main()
         for (int sample = 0; sample < 128; ++sample) audio.setSample (channel, sample, 0.25f);
     processor.processBlock (audio, midi);
     check (audio.getSample (0, 64) == 0.25f, "Audio passes through" );
+    juce::MidiBuffer keyboardMidi;
+    processor.getMidiKeyboardState().noteOn (1, 67, 0.8f);
+    audio.clear();
+    processor.processBlock (audio, keyboardMidi);
+    check (keyboardMidi.getNumEvents() > 0, "Incoming MIDI keyboard feature emits MIDI");
+    processor.getMidiKeyboardState().noteOff (1, 67, 0.0f);
+    keyboardMidi.clear();
+    processor.processBlock (audio, keyboardMidi);
     button (editor, "Melody").onClick();
     button (editor, "Reset progression").onClick();
     check (! history (editor).getText().contains (" -> ") && ! button (editor, "Play").isEnabled(), "Reset invalidates phrase");

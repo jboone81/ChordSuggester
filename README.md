@@ -8,8 +8,10 @@ An audio plugin that suggests which chord to play next, for people who don't kno
 - Double-click a recommendation to select it as the current chord and get fresh recommendations, without restarting the preview.
 - Click the current chord to replay it.
 - The small **Preview next** panel shows the current chord followed by the previewed chord. Click it to hear both chords back-to-back, one second each, without changing your selection. It is inactive until you preview a recommendation.
+- Choose a major key from the header to refresh the recommendations for that key.
+- Play notes on the on-screen MIDI keyboard with the mouse. It sends MIDI through the plugin; to hear those notes, route the plugin's MIDI output to an instrument in your host.
 
-The preview label stays visible after the sound ends and clears when you confirm a chord. Starting another preview or transition smoothly replaces playback and cancels any remaining sequence. Soft built-in tones require no external instrument or samples; an active audio device or host processing is required. Existing audio and MIDI pass through unchanged.
+The preview label stays visible after the sound ends and clears when you confirm a chord. Starting another preview or transition smoothly replaces playback and cancels any remaining sequence. Soft built-in tones require no external instrument or samples; an active audio device or host processing is required. Existing audio and incoming MIDI pass through unchanged; notes played on the on-screen keyboard are added to the outgoing MIDI stream.
 
 ## Melody prototype
 
@@ -25,7 +27,7 @@ Click **Play** to hear the melody; the button becomes **Stop**. Enable **With ch
 
 Confirming another chord, changing the scale or bar count, or choosing **Reset progression** clears the phrase. Reset starts a fresh progression from the current chord. Changing Timing affects snapping and future suggestions without rewriting existing notes. New suggestion replaces manual edits. History survives tab switches but resets when the plugin editor is reopened.
 
-This rule-based prototype does not analyze audio tracks, synchronize with the DAW, export MIDI, offer multiple melody tracks, or save progression history in sessions. The scale override affects melody suggestions only; the existing Chords tab continues to recommend chords in C major.
+This rule-based prototype does not analyze audio tracks, synchronize with the DAW, export MIDI, offer multiple melody tracks, or save progression history in sessions. The Melody scale override affects melody suggestions only; the Chords tab has its own major-key selector for chord recommendations.
 
 ## What you need
 
