@@ -63,7 +63,7 @@ bool ChordSuggesterAudioProcessor::isMidiEffect() const
 
 double ChordSuggesterAudioProcessor::getTailLengthSeconds() const
 {
-    return 2.01;
+    return 16.01;
 }
 
 int ChordSuggesterAudioProcessor::getNumPrograms()
@@ -144,8 +144,8 @@ void ChordSuggesterAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
         buffer.clear (i, 0, buffer.getNumSamples());
 
     // Generate each sample once, then mix the same preview into every output.
-    // Incoming audio and MIDI remain untouched.
-    juce::ignoreUnused (midiMessages);
+    // Keyboard clicks are queued by MidiKeyboardState and merged with incoming MIDI.
+    midiKeyboardState.processNextMidiBuffer (midiMessages, 0, buffer.getNumSamples(), true);
     preview.beginBlock();
     for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
     {
@@ -157,12 +157,26 @@ void ChordSuggesterAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
 
 void ChordSuggesterAudioProcessor::previewChord (const chords::Chord& chord)
 {
-    preview.request (chord.notes);
+    preview.chord (chord);
 }
 
 void ChordSuggesterAudioProcessor::previewTransition (const chords::Chord& current, const chords::Chord& next)
 {
-    preview.request (current.notes, &next.notes);
+    preview.chord (current, &next);
+}
+
+void ChordSuggesterAudioProcessor::previewPhrase (const melody::Phrase& phrase, bool withChords, bool loop)
+{
+    preview.phrase (phrase, withChords, loop);
+}
+
+void ChordSuggesterAudioProcessor::previewNote (int midi) { preview.audition (midi); }
+void ChordSuggesterAudioProcessor::setMelodyBackingEnabled (bool enabled) { preview.setMelodyBackingEnabled (enabled); }
+double ChordSuggesterAudioProcessor::melodyPlayhead() const { return preview.playheadBeat(); }
+
+void ChordSuggesterAudioProcessor::stopPreview()
+{
+    preview.stop();
 }
 
 //==============================================================================

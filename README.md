@@ -8,8 +8,26 @@ An audio plugin that suggests which chord to play next, for people who don't kno
 - Double-click a recommendation to select it as the current chord and get fresh recommendations, without restarting the preview.
 - Click the current chord to replay it.
 - The small **Preview next** panel shows the current chord followed by the previewed chord. Click it to hear both chords back-to-back, one second each, without changing your selection. It is inactive until you preview a recommendation.
+- Choose a major key from the header to refresh the recommendations for that key.
+- Play notes on the on-screen MIDI keyboard with the mouse. It sends MIDI through the plugin; to hear those notes, route the plugin's MIDI output to an instrument in your host.
 
-The preview label stays visible after the sound ends and clears when you confirm a chord. Starting another preview or transition smoothly replaces playback and cancels any remaining sequence. Soft built-in tones require no external instrument or samples; an active audio device or host processing is required. Existing audio and MIDI pass through unchanged.
+The preview label stays visible after the sound ends and clears when you confirm a chord. Starting another preview or transition smoothly replaces playback and cancels any remaining sequence. Soft built-in tones require no external instrument or samples; an active audio device or host processing is required. Existing audio and incoming MIDI pass through unchanged; notes played on the on-screen keyboard are added to the outgoing MIDI stream.
+
+## Melody prototype
+
+The **Chords** and **Melody** tabs share the same plugin. The starting chord and every double-click confirmation form your progression; single-click previews do not add chords.
+
+In **Melody**, review the estimated major or natural-minor scale and its notes. An alternative appears when the progression is ambiguous. Use the key/scale menu to override the estimate. The estimate uses the full confirmed history.
+
+Choose **Bars** (1, 2, 4, or 8) and **Timing** (quarter, eighth, or sixteenth notes), then click **New suggestion**. Defaults are four bars and eighth notes. Short progressions repeat to fill the chosen length; longer histories use their most recent chords. Each bar corresponds to one chord in 4/4 at a fixed 120 BPM. Generated notes stay in scale and favor chord tones on beats one and three.
+
+The piano roll shows C4 through C6, with out-of-scale rows shaded. Click a note to select and hear it. Drag its body to move its pitch and start time; drag the right edge to change duration. Double-click empty space to add a note; Delete or Backspace removes the selection. Edits snap to Timing and stay within the phrase. Out-of-scale pitches are allowed, but overlapping notes are rejected to keep the melody monophonic. Gaps are rests. Use the scrollbars or mouse wheel to scroll; Shift+wheel scrolls horizontally. The window is resizable, and the playhead follows longer phrases horizontally.
+
+Click **Play** to hear the melody; the button becomes **Stop**. Toggle **With chords** for quiet backing chords: backing fades in or out while the melody and playhead keep going, aligned to the current bar. Its setting also applies to the next playback. Enable **Loop** to repeat the whole phrase. Both options start off and can be used independently. Editing, a new suggestion, tab switching, and changing Loop stop playback with a short fade. Clicking a note auditions its pitch; chord previews replace melody playback.
+
+Confirming another chord, changing the scale or bar count, or choosing **Reset progression** clears the phrase. Reset starts a fresh progression from the current chord. Changing Timing affects snapping and future suggestions without rewriting existing notes. New suggestion replaces manual edits. History survives tab switches but resets when the plugin editor is reopened.
+
+This rule-based prototype does not analyze audio tracks, synchronize with the DAW, export MIDI, offer multiple melody tracks, or save progression history in sessions. The Melody scale override affects melody suggestions only; the Chords tab has its own major-key selector for chord recommendations.
 
 ## What you need
 
@@ -93,17 +111,21 @@ cmake --build build --config Debug --target ChordSuggester_Standalone
 
 Change the `JUCE_PATH` value if you put JUCE somewhere other than your Downloads folder. Visual Studio picks the build type at build time, which is why `--config Debug` is on the build command instead of the configure command.
 
+For a local VST3 build without copying into the system plugin folder, configure with `-DCHORDSUGGESTER_COPY_PLUGIN_AFTER_BUILD=OFF`. Installation remains enabled by default.
+
 ## Playback tests
 
 Enable the optional tests when configuring, then build and run them:
 
 ```
 cmake -B build -DCHORDSUGGESTER_BUILD_TESTS=ON
-cmake --build build --config Debug --target ChordPreviewTests
+cmake --build build --config Debug --target ChordPreviewTests MelodyTests PluginInteractionTests
 ctest --test-dir build -C Debug --output-on-failure
 ```
 
 These check simultaneous notes and root-position voicing, preview/transition duration, fades, interruption, and audio restart at 44.1, 48, and 96 kHz.
+
+Melody tests also check scale estimates, bar filling, subdivisions, editing constraints, rests, backing chords, looping, all 128 sixteenth notes, and concurrent playback requests. Plugin interaction tests cover editing gestures, confirmation/history, tab switching, phrase invalidation, audio/MIDI passthrough, and render empty/four-bar/eight-bar piano-roll snapshots into the build folder.
 
 ## Project layout
 

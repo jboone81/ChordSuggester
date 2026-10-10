@@ -12,11 +12,62 @@
 #include "PluginProcessor.h"
 #include "ChordEngine.h"
 #include <optional>
+#include "PianoRoll.h"
+
+class NavigationButton : public juce::TextButton
+{
+public:
+    using juce::TextButton::TextButton;
+    void paintButton (juce::Graphics& g, bool, bool) override
+    {
+        g.setColour (getToggleState() ? juce::Colours::white : juce::Colour (0xffa7afbc));
+        g.setFont (juce::FontOptions (20.0f, juce::Font::bold));
+        g.drawText (getButtonText(), getLocalBounds(), juce::Justification::centred);
+    }
+};
+
+class ChordMidiKeyboard final : public juce::MidiKeyboardComponent
+{
+public:
+    explicit ChordMidiKeyboard (juce::MidiKeyboardState& state);
+    void showChordPlayback (const std::array<int, 3>& notes);
+    void showTransitionPlayback (const std::array<int, 3>& first, const std::array<int, 3>& second);
+    juce::String getWhiteNoteText (int midiNoteNumber) override;
+    void drawWhiteNote (int midiNoteNumber, juce::Graphics& g, juce::Rectangle<float> area,
+                        bool isDown, bool isOver, juce::Colour lineColour,
+                        juce::Colour textColour) override;
+    void drawBlackNote (int midiNoteNumber, juce::Graphics& g, juce::Rectangle<float> area,
+                        bool isDown, bool isOver, juce::Colour noteFillColour) override;
+
+private:
+    class PlaybackTimer final : private juce::Timer
+    {
+    public:
+        explicit PlaybackTimer (ChordMidiKeyboard& keyboard) : owner (keyboard) {}
+        void start() { startTimerHz (30); }
+        void stop() { stopTimer(); }
+
+    private:
+        void timerCallback() override { owner.updatePlaybackVisual(); }
+        ChordMidiKeyboard& owner;
+    };
+
+    void updatePlaybackVisual();
+    bool isPlaybackNote (int midiNoteNumber) const;
+    void startPlaybackVisual (const std::array<int, 3>& first,
+                              const std::optional<std::array<int, 3>>& second);
+
+    std::array<int, 3> playbackNotes {};
+    std::optional<std::array<int, 3>> nextPlaybackNotes;
+    juce::uint32 playbackStartedAt = 0;
+    bool showingSecondChord = false;
+    PlaybackTimer playbackTimer { *this };
+};
 
 //==============================================================================
 /**
 */
-class ChordSuggesterAudioProcessorEditor  : public juce::AudioProcessorEditor
+class ChordSuggesterAudioProcessorEditor  : public juce::AudioProcessorEditor, private juce::Timer
 {
 public:
     ChordSuggesterAudioProcessorEditor (ChordSuggesterAudioProcessor&);
@@ -32,6 +83,8 @@ public:
     void mouseExit (const juce::MouseEvent&) override;
 
 private:
+    void updateKeySelection();
+
     // Makes newChord the chord you have, then works out fresh suggestions for it.
     void setCurrentChord (const chords::Chord& newChord);
 
@@ -43,16 +96,40 @@ private:
     juce::Rectangle<int> currentChordBounds() const;
     juce::Rectangle<int> transitionBounds() const;
     void updateCursor (juce::Point<int> position);
+    void switchTab (bool melodyTab);
+    void refreshMelody (bool stopPlayback = true);
+    void invalidatePhrase (bool stopPlayback = true);
+    melody::Scale selectedScale() const;
+    void paintMelody (juce::Graphics&);
+    void timerCallback() override;
+    void stopMelody();
+    int barCount() const;
+    double gridSize() const;
 
     // This reference is provided as a quick way for your editor to
     // access the processor object that created it.
     ChordSuggesterAudioProcessor& audioProcessor;
+    juce::ComboBox keySelector;
+    ChordMidiKeyboard midiKeyboard;
 
     int keyRoot = 0;   // 0 = key of C major
     chords::Chord currentChord { "C", "C major", { { 0, 4, 7 } } };
     std::vector<chords::Suggestion> suggestions;
     std::optional<chords::Chord> previewedChord;
     int hoveredRow = -1;
+    melody::Progression progression { currentChord };
+    melody::Estimate scaleEstimate;
+    melody::Phrase phrase;
+    PianoRoll pianoRoll { phrase };
+    uint32_t generationSeed = std::random_device {}();
+    bool showingMelody = false;
+    NavigationButton chordsTab { "Chords" }, melodyTab { "Melody" };
+    juce::TextButton generateButton { "New suggestion" }, playButton { "Play" };
+    juce::TextButton backingButton { "With chords" }, loopButton { "Loop" };
+    juce::TextButton resetButton { "Reset progression" };
+    juce::ComboBox scaleChoice, barsChoice, timingChoice;
+    juce::TextEditor progressionDisplay;
+    bool melodyPlaying = false, seenPlayhead = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ChordSuggesterAudioProcessorEditor)
 };
