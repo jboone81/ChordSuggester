@@ -123,6 +123,9 @@ private:
     int explainButtonAt (juce::Point<int> position) const;
     // Opens a pop-up explaining why suggestion number `index` works after the current chord.
     void showExplanation (int index);
+    // The small "Explain why" tag beside "Your progression", which explains the Roman numerals.
+    juce::Rectangle<int> numeralsHelpBounds() const;
+    void showNumeralsHelp();
     juce::Rectangle<int> currentChordBounds() const;
     juce::Rectangle<int> transitionBounds() const;
     juce::Rectangle<int> progressionBounds() const;
@@ -157,6 +160,7 @@ private:
     std::optional<chords::Chord> previewedChord;
     int hoveredRow = -1;
     int hoveredExplain = -1;   // the "Explain why" button the mouse is over, or -1
+    bool hoveredNumeralsHelp = false;   // true while the mouse is over the tag beside "Your progression"
     juce::Component::SafePointer<juce::CallOutBox> explanationBox;   // the explanation pop-up while it is open
     melody::Progression progression { currentChord };
     melody::Estimate scaleEstimate;

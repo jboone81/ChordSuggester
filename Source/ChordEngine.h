@@ -127,6 +127,24 @@ inline int chordType (const Chord& chord)
     return -1;
 }
 
+// The chord's Roman numeral in a major key: which note of the scale it is built on.
+// In C major: C = "I", Dm = "ii", G = "V", Am = "vi", and Bdim = "vii" with a degree sign.
+// Capitals mean a major chord, small letters a minor one, and a degree sign a diminished one.
+// A chord built on a note from outside the scale gets a b or # in front, e.g. Bb = "bVII".
+// The degree sign is stored as UTF-8, so in JUCE read the result with juce::String::fromUTF8.
+inline std::string romanNumeral (const Chord& chord, int keyRoot)
+{
+    static const char* capitals[12] = { "I", "bII", "II", "bIII", "III", "IV", "#IV", "V", "bVI", "VI", "bVII", "VII" };
+    static const char* smalls[12]   = { "i", "bii", "ii", "biii", "iii", "iv", "#iv", "v", "bvi", "vi", "bvii", "vii" };
+
+    const int stepsAboveKeyNote = (((chord.notes[0] - keyRoot) % 12) + 12) % 12;
+    const int type = chordType (chord);
+
+    if (type == 1) return smalls[stepsAboveKeyNote];
+    if (type == 2) return std::string (smalls[stepsAboveKeyNote]) + "\xc2\xb0";
+    return capitals[stepsAboveKeyNote];
+}
+
 // Where to find this chord in the real-song table, or -1 if it isn't a type the table covers.
 inline int dataState (const Chord& chord, int keyRoot)
 {

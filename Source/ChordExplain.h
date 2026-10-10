@@ -215,4 +215,32 @@ inline Explanation explain (const Chord& current, const Chord& next, int keyRoot
     return result;
 }
 
+// What the Roman numerals next to each chord mean, with examples from the chosen key.
+// The text contains degree signs stored as UTF-8, so in JUCE read it with juce::String::fromUTF8.
+inline Explanation explainRomanNumerals (int keyRoot)
+{
+    const auto inKey = chordsInMajorKey (keyRoot);
+    const std::string key = inKey[0].fullName;   // e.g. "C major"
+
+    std::string examples;
+    for (size_t i = 0; i < inKey.size(); ++i)
+        examples += (i == 0 ? "" : ", ") + inKey[i].name + " is " + romanNumeral (inKey[i], keyRoot);
+
+    const std::string degree = "\xc2\xb0";
+    const Chord outside = chordFromDataState (data::stateOf (10, 0), keyRoot);   // e.g. Bb in the key of C
+
+    Explanation result;
+    result.title = "What the Roman numerals mean";
+    result.points.push_back ("Each numeral says which note of the key the chord is built on, counting up from the key note. In "
+                             + key + ": " + examples + ".");
+    result.points.push_back ("Capital letters (I, IV, V) are major chords, which sound bright. Small letters (ii, iii, vi) are "
+                             "minor chords, which sound darker. A small circle (vii" + degree + ") marks a diminished chord, which sounds tense.");
+    result.points.push_back ("A b or # in front means the chord is built on a note from outside the key. For example, "
+                             + outside.name + " is " + romanNumeral (outside, keyRoot) + " in " + key + ".");
+    result.points.push_back ("The numerals describe the pattern, not the exact chords. "
+                             + inKey[0].name + ", " + inKey[4].name + ", " + inKey[5].name + ", " + inKey[3].name
+                             + " is I, V, vi, IV, and it stays I, V, vi, IV in any other key, so you can move a song higher or lower and keep the same feel.");
+    return result;
+}
+
 } // namespace chords

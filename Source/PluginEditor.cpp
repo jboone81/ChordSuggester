@@ -709,6 +709,16 @@ void ChordSuggesterAudioProcessorEditor::paintProgression (juce::Graphics& g)
     g.drawText ("Your progression", area.getX(), area.getY() - 30, area.getWidth(), 24,
                 juce::Justification::centredLeft);
 
+    // The small "Explain why" tag: explains what the Roman numerals on the chips mean.
+    const auto helpTag = numeralsHelpBounds().toFloat();
+    g.setColour (juce::Colours::white.withAlpha (hoveredNumeralsHelp ? 0.22f : 0.10f));
+    g.fillRoundedRectangle (helpTag, 6.0f);
+    g.setColour (juce::Colours::white.withAlpha (0.35f));
+    g.drawRoundedRectangle (helpTag.reduced (0.5f), 6.0f, 1.0f);
+    g.setColour (juce::Colour (0xfff1f3f6));
+    g.setFont (juce::FontOptions (12.0f).withStyle ("Bold"));
+    g.drawText ("Explain why", helpTag, juce::Justification::centred);
+
     g.setColour (panelColour);
     g.fillRoundedRectangle (area.toFloat(), 12.0f);
     g.setColour (juce::Colour (0xff353d4b));
@@ -717,31 +727,39 @@ void ChordSuggesterAudioProcessorEditor::paintProgression (juce::Graphics& g)
     // Chords as chips with arrows between, wrapping onto new lines. If they don't all
     // fit, the oldest are left out and a "..." chip stands in for them.
     const juce::Font chipFont (juce::FontOptions (15.0f).withStyle ("Bold"));
+    // Each chip also shows the chord's Roman numeral in the chosen key (I, ii, V...), in a
+    // lighter style after the name. It follows the Key menu, so it updates when the key changes.
+    const juce::Font numeralFont (juce::FontOptions (13.0f));
+    const int numeralGap = 7;
     const auto& all = progression.all();
     const auto inner = area.reduced (12, 10);
     const int chipHeight = 28, lineGap = 8, arrowWidth = 20;
     const auto ellipsis = juce::String::fromUTF8 ("\xe2\x80\xa6");
 
-    struct Chip { juce::String text; juce::Rectangle<int> bounds; bool current; int index; };
+    struct Chip { juce::String text, numeral; juce::Rectangle<int> bounds; bool current; int index; };
     const auto layout = [&] (size_t first, std::vector<Chip>& chips)
     {
         chips.clear();
         int x = inner.getX(), y = inner.getY();
-        struct Item { juce::String text; bool current; int index; };
+        struct Item { juce::String text, numeral; bool current; int index; };
         std::vector<Item> items;
-        if (first > 0) items.push_back ({ ellipsis, false, -1 });
+        if (first > 0) items.push_back ({ ellipsis, {}, false, -1 });
         for (size_t i = first; i < all.size(); ++i)
-            items.push_back ({ juce::String (all[i].name), i + 1 == all.size(), (int) i });
+            items.push_back ({ juce::String (all[i].name),
+                               juce::String::fromUTF8 (chords::romanNumeral (all[i], keyRoot).c_str()),
+                               i + 1 == all.size(), (int) i });
 
         for (size_t i = 0; i < items.size(); ++i)
         {
-            const int width = juce::roundToInt (juce::GlyphArrangement::getStringWidth (chipFont, items[i].text)) + 22;
+            int width = juce::roundToInt (juce::GlyphArrangement::getStringWidth (chipFont, items[i].text)) + 22;
+            if (items[i].numeral.isNotEmpty())
+                width += numeralGap + juce::roundToInt (juce::GlyphArrangement::getStringWidth (numeralFont, items[i].numeral));
             if (x > inner.getX() && x + width > inner.getRight())
             {
                 x = inner.getX();
                 y += chipHeight + lineGap;
             }
-            chips.push_back ({ items[i].text, { x, y, width, chipHeight }, items[i].current, items[i].index });
+            chips.push_back ({ items[i].text, items[i].numeral, { x, y, width, chipHeight }, items[i].current, items[i].index });
             x += width + arrowWidth;
         }
         return chips.empty() || chips.back().bounds.getBottom() <= inner.getBottom();
@@ -762,7 +780,21 @@ void ChordSuggesterAudioProcessorEditor::paintProgression (juce::Graphics& g)
             g.drawRoundedRectangle (chip.bounds.toFloat().reduced (1.0f), 8.0f, 2.5f);
         }
         g.setColour (juce::Colour (0xfff1f3f6));
-        g.drawText (chip.text, chip.bounds, juce::Justification::centred);
+        if (chip.numeral.isEmpty())
+        {
+            g.drawText (chip.text, chip.bounds, juce::Justification::centred);
+        }
+        else
+        {
+            // Chord name on the left, its Roman numeral after it in a lighter style.
+            const auto textArea = chip.bounds.reduced (11, 0);
+            g.setFont (chipFont);
+            g.drawText (chip.text, textArea, juce::Justification::centredLeft);
+            g.setColour (juce::Colour (0xfff1f3f6).withAlpha (chip.current ? 0.85f : 0.62f));
+            g.setFont (numeralFont);
+            g.drawText (chip.numeral, textArea, juce::Justification::centredRight);
+            g.setFont (chipFont);
+        }
 
         // Arrow to the next chip when it's on the same line.
         if (i + 1 < chips.size() && chips[i + 1].bounds.getY() == chip.bounds.getY())
@@ -778,6 +810,7 @@ void ChordSuggesterAudioProcessorEditor::updateCursor (juce::Point<int> position
 {
     if (showingMelody) return;
     const bool clickable = rowAt (position) >= 0 || currentChordBounds().contains (position)
+        || numeralsHelpBounds().contains (position)
         || (previewedChord.has_value() && transitionBounds().contains (position));
     setMouseCursor (clickable ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
 }
@@ -833,6 +866,22 @@ void ChordSuggesterAudioProcessorEditor::showExplanation (int index)
     // button, closes when the user clicks anywhere else, and deletes itself.
     auto panel = std::make_unique<ExplanationPanel> (chords::explain (currentChord, suggestions[(size_t) index].chord, keyRoot));
     explanationBox = &juce::CallOutBox::launchAsynchronously (std::move (panel), explainButtonBounds (index), this);
+}
+
+juce::Rectangle<int> ChordSuggesterAudioProcessorEditor::numeralsHelpBounds() const
+{
+    // Just to the right of the "Your progression" heading.
+    const auto area = progressionBounds();
+    const juce::Font headingFont (juce::FontOptions (17.0f).withStyle ("Bold"));
+    const int headingWidth = juce::roundToInt (juce::GlyphArrangement::getStringWidth (headingFont, "Your progression"));
+    return { area.getX() + headingWidth + 12, area.getY() - 28, 86, 20 };
+}
+
+void ChordSuggesterAudioProcessorEditor::showNumeralsHelp()
+{
+    // The wording comes from chords::explainRomanNumerals in ChordExplain.h, using the chosen key for its examples.
+    auto panel = std::make_unique<ExplanationPanel> (chords::explainRomanNumerals (keyRoot));
+    explanationBox = &juce::CallOutBox::launchAsynchronously (std::move (panel), numeralsHelpBounds(), this);
 }
 
 //==============================================================================
@@ -1038,6 +1087,11 @@ void ChordSuggesterAudioProcessorEditor::mouseDown (const juce::MouseEvent& even
         showExplanation (explain);
         return;
     }
+    if (numeralsHelpBounds().contains (position))
+    {
+        showNumeralsHelp();
+        return;
+    }
 
     const int row = rowAt (position);
 
@@ -1085,12 +1139,14 @@ void ChordSuggesterAudioProcessorEditor::mouseMove (const juce::MouseEvent& even
 {
     const int row = showingMelody ? -1 : rowAt (event.getPosition());
     const int explain = showingMelody ? -1 : explainButtonAt (event.getPosition());
+    const bool numeralsHelp = ! showingMelody && numeralsHelpBounds().contains (event.getPosition());
     updateCursor (event.getPosition());
 
-    if (row != hoveredRow || explain != hoveredExplain)
+    if (row != hoveredRow || explain != hoveredExplain || numeralsHelp != hoveredNumeralsHelp)
     {
         hoveredRow = row;
         hoveredExplain = explain;
+        hoveredNumeralsHelp = numeralsHelp;
         repaint();
     }
 }
@@ -1098,9 +1154,10 @@ void ChordSuggesterAudioProcessorEditor::mouseMove (const juce::MouseEvent& even
 void ChordSuggesterAudioProcessorEditor::mouseExit (const juce::MouseEvent&)
 {
     setMouseCursor (juce::MouseCursor::NormalCursor);
-    if (hoveredRow != -1 || hoveredExplain != -1)
+    if (hoveredRow != -1 || hoveredExplain != -1 || hoveredNumeralsHelp)
     {
         hoveredRow = hoveredExplain = -1;
+        hoveredNumeralsHelp = false;
         repaint();
     }
 }
