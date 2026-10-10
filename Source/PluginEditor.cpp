@@ -227,6 +227,14 @@ ChordSuggesterAudioProcessorEditor::ChordSuggesterAudioProcessorEditor (ChordSug
     timingChoice.setComponentID ("timing");
     addAndMakeVisible (progressionDisplay);
     addAndMakeVisible (pianoRoll);
+
+    // Dragging this handle writes the melody (plus the chords, if "With chords" is on)
+    // to a MIDI file and hands it to the DAW.
+    addAndMakeVisible (melodyDragHandle);
+    melodyDragHandle.createFile = [this]
+    {
+        return midi_writer::writePhraseToTempFile (phrase, backingButton.getToggleState());
+    };
     progressionDisplay.setMultiLine (false);
     progressionDisplay.setReadOnly (true);
     progressionDisplay.setColour (juce::TextEditor::backgroundColourId, juce::Colour (0xff20252d));
@@ -321,6 +329,7 @@ void ChordSuggesterAudioProcessorEditor::timerCallback()
         else if (seenPlayhead) { melodyPlaying = false; playButton.setButtonText ("Play"); }
     }
     pianoRoll.setPlayhead (melodyPlaying ? beat : -1);
+    melodyDragHandle.setEnabled (! phrase.notes.empty());   // nothing to drag until there is a melody
 }
 
 void ChordSuggesterAudioProcessorEditor::switchTab (bool melodyView)
@@ -336,6 +345,7 @@ void ChordSuggesterAudioProcessorEditor::switchTab (bool melodyView)
     for (auto* box : { &scaleChoice, &barsChoice, &timingChoice }) box->setVisible (showingMelody);
     progressionDisplay.setVisible (showingMelody);
     pianoRoll.setVisible (showingMelody);
+    melodyDragHandle.setVisible (showingMelody);
     setMouseCursor (juce::MouseCursor::NormalCursor);
     repaint();
 }
@@ -635,6 +645,7 @@ void ChordSuggesterAudioProcessorEditor::resized()
     melodyTab.setBounds (400, 16, 110, 40);
     scaleChoice.setBounds (getWidth() - 285, 22, 261, 32);
     generateButton.setBounds (200, 86, 180, 36);
+    melodyDragHandle.setBounds (392, 86, 172, 36);
     barsChoice.setBounds (getWidth() - 325, 86, 85, 36);
     timingChoice.setBounds (getWidth() - 150, 86, 126, 36);
     progressionDisplay.setBounds (24, 150, getWidth() - 250, 26);

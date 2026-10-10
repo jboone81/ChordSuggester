@@ -12,6 +12,7 @@
 #include "PluginProcessor.h"
 #include "ChordEngine.h"
 #include "MidiChordReader.h"
+#include "MidiDragOut.h"
 #include <optional>
 #include "PianoRoll.h"
 
@@ -140,6 +141,7 @@ private:
     juce::ComboBox scaleChoice, barsChoice, timingChoice;
     juce::TextEditor progressionDisplay;
     bool melodyPlaying = false, seenPlayhead = false;
+    MidiDragHandle melodyDragHandle;   // on the Melody tab: drag the suggested melody out to a DAW track
     bool midiDragHovering = false;   // true while a MIDI file is being dragged over the window
     juce::String dropMessage;        // shown under the chord after a drop, e.g. "From clip.mid"
 

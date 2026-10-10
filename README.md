@@ -26,6 +26,8 @@ The piano roll shows C4 through C6, with out-of-scale rows shaded. Click a note 
 
 Click **Play** to hear the melody; the button becomes **Stop**. Toggle **With chords** for quiet backing chords: backing fades in or out while the melody and playhead keep going, aligned to the current bar. Its setting also applies to the next playback. Enable **Loop** to repeat the whole phrase. Both options start off and can be used independently. Editing, a new suggestion, tab switching, and changing Loop stop playback with a short fade. Clicking a note auditions its pitch; chord previews replace melody playback.
 
+Drag the **Drag to your DAW** handle (next to **New suggestion**) onto an instrument track in your DAW to copy the melody there as a MIDI clip, including any edits made in the piano roll. With **With chords** on, the chords are included under the melody. The clip has no tempo of its own, so it follows the song's tempo. The code is in `Source/MidiDragOut.h`.
+
 Confirming another chord, changing the scale or bar count, or choosing **Reset progression** clears the phrase. Reset starts a fresh progression from the current chord. Changing Timing affects snapping and future suggestions without rewriting existing notes. New suggestion replaces manual edits. History survives tab switches but resets when the plugin editor is reopened.
 
 This rule-based prototype does not analyze audio tracks, synchronize with the DAW, export MIDI, offer multiple melody tracks, or save progression history in sessions. The Melody scale override affects melody suggestions only; the Chords tab has its own major-key selector for chord recommendations.
