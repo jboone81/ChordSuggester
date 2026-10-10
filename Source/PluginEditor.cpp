@@ -183,6 +183,32 @@ void ChordMidiKeyboard::drawBlackNote (int midiNoteNumber, juce::Graphics& g,
 
 
 
+void RoundedKeySelectorLookAndFeel::drawComboBox (juce::Graphics& g, int width, int height,
+                                                   bool isButtonDown, int buttonX, int buttonY,
+                                                   int buttonW, int buttonH, juce::ComboBox& box)
+{
+    juce::ignoreUnused (buttonX, buttonY, buttonW, buttonH);
+
+    const auto bounds = juce::Rectangle<float> (0.5f, 0.5f,
+                                                 (float) width - 1.0f, (float) height - 1.0f);
+    const float cornerRadius = (float) height * 0.42f;
+    g.setColour (box.findColour (juce::ComboBox::backgroundColourId)
+                     .interpolatedWith (juce::Colour (0xff252a34), isButtonDown ? 0.8f : 0.0f));
+    g.fillRoundedRectangle (bounds, cornerRadius);
+    g.setColour (box.findColour (juce::ComboBox::outlineColourId));
+    g.drawRoundedRectangle (bounds, cornerRadius, 1.3f);
+
+    const auto centreX = (float) width - (float) height * 0.62f;
+    const auto centreY = (float) height * 0.5f;
+    juce::Path arrow;
+    arrow.startNewSubPath (centreX - 4.0f, centreY - 1.5f);
+    arrow.lineTo (centreX, centreY + 2.5f);
+    arrow.lineTo (centreX + 4.0f, centreY - 1.5f);
+    g.setColour (box.findColour (juce::ComboBox::arrowColourId));
+    g.strokePath (arrow, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved,
+                                                juce::PathStrokeType::rounded));
+}
+
 //==============================================================================
 ChordSuggesterAudioProcessorEditor::ChordSuggesterAudioProcessorEditor (ChordSuggesterAudioProcessor& p)
     : AudioProcessorEditor (&p), audioProcessor (p), midiKeyboard (p.getMidiKeyboardState())
@@ -199,6 +225,7 @@ ChordSuggesterAudioProcessorEditor::ChordSuggesterAudioProcessorEditor (ChordSug
 
     keySelector.setSelectedId (keyRoot + 1, juce::dontSendNotification);
     keySelector.setJustificationType (juce::Justification::centred);
+    keySelector.setLookAndFeel (&keySelectorLookAndFeel);
     keySelector.setColour (juce::ComboBox::backgroundColourId, headerColour);
     keySelector.setColour (juce::ComboBox::textColourId, juce::Colour (0xfff1f3f6));
     keySelector.setColour (juce::ComboBox::outlineColourId, juce::Colour (0xff394150));
@@ -303,6 +330,7 @@ ChordSuggesterAudioProcessorEditor::ChordSuggesterAudioProcessorEditor (ChordSug
 
 ChordSuggesterAudioProcessorEditor::~ChordSuggesterAudioProcessorEditor()
 {
+    keySelector.setLookAndFeel (nullptr);
     audioProcessor.stopPreview();
 }
 
