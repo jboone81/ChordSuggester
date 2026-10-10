@@ -13,6 +13,19 @@
 #include "ChordEngine.h"
 #include "MidiChordReader.h"
 #include <optional>
+#include "PianoRoll.h"
+
+class NavigationButton : public juce::TextButton
+{
+public:
+    using juce::TextButton::TextButton;
+    void paintButton (juce::Graphics& g, bool, bool) override
+    {
+        g.setColour (getToggleState() ? juce::Colours::white : juce::Colour (0xffa7afbc));
+        g.setFont (juce::FontOptions (20.0f, juce::Font::bold));
+        g.drawText (getButtonText(), getLocalBounds(), juce::Justification::centred);
+    }
+};
 
 class ChordMidiKeyboard final : public juce::MidiKeyboardComponent
 {
@@ -92,6 +105,15 @@ private:
     juce::Rectangle<int> currentChordBounds() const;
     juce::Rectangle<int> transitionBounds() const;
     void updateCursor (juce::Point<int> position);
+    void switchTab (bool melodyTab);
+    void refreshMelody (bool stopPlayback = true);
+    void invalidatePhrase (bool stopPlayback = true);
+    melody::Scale selectedScale() const;
+    void paintMelody (juce::Graphics&);
+    void timerCallback() override;
+    void stopMelody();
+    int barCount() const;
+    double gridSize() const;
 
     // This reference is provided as a quick way for your editor to
     // access the processor object that created it.
