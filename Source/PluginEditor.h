@@ -107,6 +107,10 @@ private:
     // Makes newChord the chord you have, then works out fresh suggestions for it.
     void setCurrentChord (const chords::Chord& newChord);
 
+    // The "More chords" drop-down: every chord that isn't already a suggestion.
+    void updateMoreChords();
+    void chooseMoreChord();
+
     // Where suggestion number `index` is drawn, which is also where it can be clicked.
     juce::Rectangle<int> rowBounds (int index) const;
 
@@ -114,6 +118,9 @@ private:
     int rowAt (juce::Point<int> position) const;
     juce::Rectangle<int> currentChordBounds() const;
     juce::Rectangle<int> transitionBounds() const;
+    juce::Rectangle<int> progressionBounds() const;
+    void paintProgression (juce::Graphics&);
+    void undoLastChord();
     void updateCursor (juce::Point<int> position);
     void switchTab (bool melodyTab);
     void refreshMelody (bool stopPlayback = true);
@@ -130,6 +137,8 @@ private:
     ChordSuggesterAudioProcessor& audioProcessor;
     RoundedKeySelectorLookAndFeel keySelectorLookAndFeel;
     juce::ComboBox keySelector;
+    juce::ComboBox moreChords;
+    std::vector<chords::Chord> moreChordOptions;   // item ID n is moreChordOptions[n - 1]
     ChordMidiKeyboard midiKeyboard;
 
     int keyRoot = 0;   // 0 = key of C major
@@ -147,6 +156,7 @@ private:
     juce::TextButton generateButton { "New suggestion" }, playButton { "Play" };
     juce::TextButton backingButton { "With chords" }, loopButton { "Loop" };
     juce::TextButton resetButton { "Reset progression" };
+    juce::TextButton undoChordButton { "Undo last chord" }, resetChordsButton { "Reset" };
     juce::ComboBox scaleChoice, barsChoice, timingChoice;
     juce::TextEditor progressionDisplay;
     bool melodyPlaying = false, seenPlayhead = false;

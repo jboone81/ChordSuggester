@@ -30,6 +30,9 @@ int main()
     check (history.recent().front().name == history.all()[3].name, "Use most recent chords");
     history.reset (chords[5]);
     check (history.all().size() == 1 && history.all()[0].name == "Am", "Reset to current chord");
+    check (! history.removeLast() && history.all().size() == 1, "Undo keeps the first chord");
+    history.confirm (chords[4]);
+    check (history.removeLast() && history.all().size() == 1 && history.all().back().name == "Am", "Undo removes the latest chord");
     const auto estimated = melody::estimate (progression);
     check (estimated.best.root == 0 && ! estimated.best.minor, "C Am F G estimates C major");
     const auto minor = melody::estimate ({ chords[5], chords[1], chords[2], chords[5] });
