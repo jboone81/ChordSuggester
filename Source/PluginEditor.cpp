@@ -272,7 +272,7 @@ ChordSuggesterAudioProcessorEditor::ChordSuggesterAudioProcessorEditor (ChordSug
             scaleChoice.addItem (melody::Scale { root, mode == 1 }.name(), 2 + mode * 12 + root);
     scaleChoice.setSelectedId (1, juce::dontSendNotification);
     scaleChoice.onChange = [this] { invalidatePhrase(); repaint(); };
-    for (int bars : { 1, 2, 4, 8 }) barsChoice.addItem (juce::String (bars), bars);
+    for (int bars : { 1, 2, 3, 4 }) barsChoice.addItem (juce::String (bars), bars);
     barsChoice.setSelectedId (4, juce::dontSendNotification);
     barsChoice.onChange = [this] { invalidatePhrase(); repaint(); };
     timingChoice.addItem ("1/4 notes", 1);

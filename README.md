@@ -20,7 +20,7 @@ The **Chords** and **Melody** tabs share the same plugin. The starting chord and
 
 In **Melody**, review the estimated major or natural-minor scale and its notes. An alternative appears when the progression is ambiguous. Use the key/scale menu to override the estimate. The estimate uses the full confirmed history.
 
-Choose **Bars** (1, 2, 4, or 8) and **Timing** (quarter, eighth, or sixteenth notes), then click **New suggestion**. Defaults are four bars and eighth notes. Short progressions repeat to fill the chosen length; longer histories use their most recent chords. Each bar corresponds to one chord in 4/4 at a fixed 120 BPM. Generated notes stay in scale and favor chord tones on beats one and three.
+Choose **Bars** (1, 2, 3, or 4) and **Timing** (quarter, eighth, or sixteenth notes), then click **New suggestion**. Defaults are four bars and eighth notes. Short progressions repeat to fill the chosen length; longer histories use their most recent chords. Each bar corresponds to one chord in 4/4 at a fixed 120 BPM. Generated notes stay in scale and favor chord tones on beats one and three.
 
 The piano roll shows C4 through C6, with out-of-scale rows shaded. Click a note to select and hear it. Drag its body to move its pitch and start time; drag the right edge to change duration. Double-click empty space to add a note; Delete or Backspace removes the selection. Edits snap to Timing and stay within the phrase. Out-of-scale pitches are allowed, but overlapping notes are rejected to keep the melody monophonic. Gaps are rests. Use the scrollbars or mouse wheel to scroll; Shift+wheel scrolls horizontally. The window is resizable, and the playhead follows longer phrases horizontally.
 
