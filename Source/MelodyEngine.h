@@ -84,6 +84,13 @@ public:
     explicit Progression (const chords::Chord& start) : history { start } {}
     void confirm (const chords::Chord& chord) { history.push_back (chord); }
     void reset (const chords::Chord& chord) { history = { chord }; }
+    // Removes the most recent chord, always keeping the first. False if there was nothing to remove.
+    bool removeLast()
+    {
+        if (history.size() <= 1) return false;
+        history.pop_back();
+        return true;
+    }
     const std::vector<chords::Chord>& all() const { return history; }
     std::vector<chords::Chord> recent() const
     {
