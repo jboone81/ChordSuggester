@@ -13,11 +13,11 @@ The preview label stays visible after the sound ends and clears when you confirm
 
 ## What you need
 
-These steps are for macOS.
+On every platform you need:
 
-- Apple's Command Line Tools: `xcode-select --install`
-- CMake 3.22 or later: `brew install cmake`
-- JUCE (this project was set up with JUCE 9.0.3), downloaded from https://juce.com/get-juce
+- CMake 3.22 or later
+- A C++ compiler (listed per platform below)
+- JUCE (this project was set up with JUCE 9.0.3), downloaded from https://juce.com/get-juce or cloned with `git clone --branch 9.0.3 --depth 1 https://github.com/juce-framework/JUCE.git`
 
 ## Where to put JUCE
 
@@ -29,9 +29,24 @@ If your JUCE folder is somewhere else, pass its location when you configure:
 cmake -B build -DCMAKE_BUILD_TYPE=Debug -DJUCE_PATH=/path/to/your/JUCE
 ```
 
+On Windows you always need to pass `-DJUCE_PATH` (see below), because the default relies on the `HOME` variable, which Windows doesn't normally set.
+
 ## Build and run
 
-From the project folder:
+The first build takes several minutes. Later builds only need the build and run commands.
+
+The Standalone app runs the plugin in its own window, so you can test without opening a DAW.
+
+### macOS
+
+Install the tools:
+
+```
+xcode-select --install
+brew install cmake
+```
+
+Then, from the project folder:
 
 ```
 cmake -B build -DCMAKE_BUILD_TYPE=Debug
@@ -39,9 +54,44 @@ cmake --build build --target ChordSuggester_Standalone -j 8
 open build/ChordSuggester_artefacts/Debug/Standalone/ChordSuggester.app
 ```
 
-The first build takes several minutes. Later builds only need the second and third commands.
+### Linux
 
-The Standalone app runs the plugin in its own window, so you can test without opening a DAW.
+These steps are for Ubuntu and Debian. Install the compiler, CMake, and the libraries JUCE builds against:
+
+```
+sudo apt update
+sudo apt install -y cmake build-essential pkg-config \
+  libasound2-dev libfreetype-dev libfontconfig1-dev \
+  libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxext-dev \
+  libgl1-mesa-dev libcurl4-openssl-dev libgtk-3-dev libwebkit2gtk-4.1-dev
+```
+
+Then, from the project folder:
+
+```
+cmake -B build -DCMAKE_BUILD_TYPE=Debug
+cmake --build build --target ChordSuggester_Standalone -j 8
+./build/ChordSuggester_artefacts/Debug/Standalone/ChordSuggester
+```
+
+A yellow "Audio input is muted to avoid feedback loop" bar is normal; chord previews still play. Use **Settings...** to pick an audio device.
+
+### Windows
+
+Install the tools:
+
+- Visual Studio 2022 (the free Community edition is fine) with the **Desktop development with C++** workload. This includes a compiler and CMake.
+- Optionally, Git for Windows, if you want to clone JUCE instead of downloading the zip.
+
+Open the **Developer PowerShell for VS 2022** from the Start menu, go to the project folder, and run:
+
+```
+cmake -B build -DJUCE_PATH="$env:USERPROFILE\Downloads\JUCE"
+cmake --build build --config Debug --target ChordSuggester_Standalone
+.\build\ChordSuggester_artefacts\Debug\Standalone\ChordSuggester.exe
+```
+
+Change the `JUCE_PATH` value if you put JUCE somewhere other than your Downloads folder. Visual Studio picks the build type at build time, which is why `--config Debug` is on the build command instead of the configure command.
 
 ## Playback tests
 
