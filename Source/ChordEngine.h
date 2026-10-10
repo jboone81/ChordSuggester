@@ -4,11 +4,17 @@
 // The "brain" of the plugin: given the chord you have and the key you're in,
 // it returns the other chords in that key, ranked from safest to most dramatic.
 // Plain C++ with no JUCE in it, so it can be tested on its own.
+//
+// "Safe" blends two things:
+//   - theory: how smoothly the notes move from one chord to the next
+//   - data:   how often that move happens in real songs (see ChordTransitions.h)
 
 #include <algorithm>
 #include <array>
 #include <string>
 #include <vector>
+
+#include "ChordTransitions.h"
 
 namespace chords
 {
@@ -18,7 +24,7 @@ struct Chord
 {
     std::string name;            // e.g. "Em"
     std::string fullName;        // e.g. "E minor"
-    std::array<int, 3> notes;    // e.g. { 4, 7, 11 }
+    std::array<int, 3> notes;    // e.g. { 4, 7, 11 }, with the chord's root note first
 };
 
 struct Suggestion
@@ -26,7 +32,12 @@ struct Suggestion
     Chord chord;
     int sharedNotes = 0;   // notes in common with the current chord (0-3)
     int movement = 0;      // fewest half-steps the three notes travel in total
-    float safety = 0.0f;   // 1 = safest (most blue), 0 = most dramatic (most gray)
+
+    float smoothness = 0.0f;   // theory score: 1 = the notes barely move, 0 = they move the most
+    float popularity = 0.0f;   // data score: 1 = the most common next chord in real songs
+    float chance = 0.0f;       // how often real songs make this move (0.29 = 29% of the time)
+
+    float safety = 0.0f;   // the blend of the two: 1 = safest (most blue), 0 = most dramatic (most gray)
 };
 
 inline std::string noteName (int note, bool useFlats = false)
@@ -102,8 +113,30 @@ inline int movement (const Chord& from, const Chord& to)
     return best;
 }
 
+// The chord's type: 0 = major, 1 = minor, 2 = diminished, -1 = anything else.
+inline int chordType (const Chord& chord)
+{
+    const int third = (((chord.notes[1] - chord.notes[0]) % 12) + 12) % 12;
+    const int fifth = (((chord.notes[2] - chord.notes[0]) % 12) + 12) % 12;
+
+    if (third == 4 && fifth == 7) return 0;
+    if (third == 3 && fifth == 7) return 1;
+    if (third == 3 && fifth == 6) return 2;
+    return -1;
+}
+
+// Where to find this chord in the real-song table, or -1 if it isn't a type the table covers.
+inline int dataState (const Chord& chord, int keyRoot)
+{
+    const int type = chordType (chord);
+    return type < 0 ? -1 : data::stateOf (chord.notes[0] - keyRoot, type);
+}
+
 // The main function: the chords to try next, safest first.
-inline std::vector<Suggestion> suggest (const Chord& current, int keyRoot)
+//
+// dataWeight sets the mix: 0 = theory only (smooth note movement),
+// 1 = data only (what real songs do), 0.5 = an even blend of the two.
+inline std::vector<Suggestion> suggest (const Chord& current, int keyRoot, float dataWeight = 0.5f)
 {
     std::vector<Suggestion> result;
 
@@ -125,6 +158,7 @@ inline std::vector<Suggestion> suggest (const Chord& current, int keyRoot)
     if (result.empty())
         return result;
 
+    // Theory score: the smoothest move gets 1, the biggest jump gets 0.
     int lowest = result.front().movement, highest = result.front().movement;
     for (const auto& s : result)
     {
@@ -133,15 +167,51 @@ inline std::vector<Suggestion> suggest (const Chord& current, int keyRoot)
     }
 
     for (auto& s : result)
-        s.safety = (highest == lowest) ? 1.0f
-                                       : 1.0f - (float) (s.movement - lowest) / (float) (highest - lowest);
+        s.smoothness = (highest == lowest) ? 1.0f
+                                           : 1.0f - (float) (s.movement - lowest) / (float) (highest - lowest);
 
-    // Safest first. Ties: more shared notes first.
+    // Data score: the most common next chord gets 1, the rest are measured against it.
+    // If real songs rarely use the current chord, there isn't enough evidence to go on,
+    // so fall back to theory alone.
+    const int minimumTimesSeen = 100;
+    const int from = dataState (current, keyRoot);
+    const bool haveData = from >= 0 && data::majorKeyTimesSeen[from] >= minimumTimesSeen;
+
+    if (haveData)
+    {
+        float mostCommon = 0.0f;
+        for (auto& s : result)
+        {
+            const int to = dataState (s.chord, keyRoot);
+            s.chance = to >= 0 ? data::chanceOfNext (false, from, to) : 0.0f;
+            mostCommon = std::max (mostCommon, s.chance);
+        }
+
+        if (mostCommon > 0.0f)
+            for (auto& s : result)
+                s.popularity = s.chance / mostCommon;
+    }
+
+    // Blend the two, then stretch so the best suggestion is always fully blue.
+    const float weight = haveData ? std::min (1.0f, std::max (0.0f, dataWeight)) : 0.0f;
+
+    float best = 0.0f;
+    for (auto& s : result)
+    {
+        s.safety = weight * s.popularity + (1.0f - weight) * s.smoothness;
+        best = std::max (best, s.safety);
+    }
+
+    if (best > 0.0f)
+        for (auto& s : result)
+            s.safety /= best;
+
+    // Safest first. Ties: the smoother move first.
     std::stable_sort (result.begin(), result.end(), [] (const Suggestion& x, const Suggestion& y)
     {
-        if (x.movement != y.movement)
-            return x.movement < y.movement;
-        return x.sharedNotes > y.sharedNotes;
+        if (x.safety != y.safety)
+            return x.safety > y.safety;
+        return x.movement < y.movement;
     });
 
     return result;
