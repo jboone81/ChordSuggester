@@ -60,6 +60,8 @@ public:
         const juce::Colour teal (0xff168982);
         const juce::Colour goldenYellow (0xfff5cb2f);
         const juce::Colour mint (0xff9ddba0);
+        const juce::Colour outOfScaleKey (0xff0a2022);   // piano keys for notes outside the scale
+        const juce::Colour outOfScaleRow (0xff071b1d);   // their rows in the grid
         g.fillAll (background);
         const auto area = gridArea();
         const double xOffset = horizontal.getCurrentRangeStart(), yOffset = vertical.getCurrentRangeStart();
@@ -69,14 +71,17 @@ public:
         {
             const int y = area.getY() + int ((84 - midi) * rowHeight - yOffset);
             const bool inScale = scale.contains (midi);
-            g.setColour (inScale ? panel : background.brighter (0.08f));
+            // Rows for notes outside the scale are clearly darker, all the way across the grid.
+            g.setColour (inScale ? panel : outOfScaleRow);
             g.fillRect (area.getX(), y, area.getWidth(), rowHeight);
             g.setColour (warmBrown.withAlpha (0.82f));
             g.drawHorizontalLine (y, float (area.getX()), float (area.getRight()));
             const bool sounding = isSounding (midi);   // the key lights up while its note plays
-            g.setColour (sounding ? goldenYellow : (inScale ? teal : warmBrown));
+            // The piano keys: notes in the scale are bright with clear labels, and notes outside
+            // it (the ones to avoid) are dark with faded labels, like a switched-off button.
+            g.setColour (sounding ? goldenYellow : (inScale ? teal : outOfScaleKey));
             g.fillRect (0, y + 1, area.getX() - 2, rowHeight - 2);
-            g.setColour (sounding ? background : warmCream);
+            g.setColour (sounding ? background : (inScale ? warmCream : warmCream.withAlpha (0.42f)));
             g.setFont (juce::FontOptions (12.0f));
             g.drawText (juce::String (chords::noteName (midi % 12)) + juce::String (midi / 12 - 1),
                         8, y, area.getX() - 12, rowHeight, juce::Justification::centredLeft);
