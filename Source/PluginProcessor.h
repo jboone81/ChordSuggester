@@ -15,12 +15,12 @@
 //==============================================================================
 /**
 */
-class ChordSuggesterAudioProcessor  : public juce::AudioProcessor
+class EZChordsAndHarmonyAudioProcessor  : public juce::AudioProcessor
 {
 public:
     //==============================================================================
-    ChordSuggesterAudioProcessor();
-    ~ChordSuggesterAudioProcessor() override;
+    EZChordsAndHarmonyAudioProcessor();
+    ~EZChordsAndHarmonyAudioProcessor() override;
 
     //==============================================================================
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
@@ -41,6 +41,11 @@ public:
     double melodyPlayhead() const;
     void stopPreview();
     juce::MidiKeyboardState& getMidiKeyboardState() noexcept { return midiKeyboardState; }
+
+    // Which built-in sound plays the chords and melodies (see PreviewPlayback::Sound).
+    // The choice is saved with the DAW project.
+    void setPreviewSound (PreviewPlayback::Sound sound) { preview.setSound (sound); }
+    PreviewPlayback::Sound getPreviewSound() const { return preview.getSound(); }
 
     //==============================================================================
     juce::AudioProcessorEditor* createEditor() override;
@@ -69,5 +74,5 @@ private:
     PreviewPlayback preview;
     juce::MidiKeyboardState midiKeyboardState;
     //==============================================================================
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ChordSuggesterAudioProcessor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (EZChordsAndHarmonyAudioProcessor)
 };

@@ -1,4 +1,4 @@
-# ChordSuggester
+# EZ Chords & Harmony
 
 An audio plugin that suggests which chord to play next, for people who don't know music theory. You give it a chord, and it lists the other chords in the key, colored from blue (safe) to gray (dramatic).
 
@@ -12,6 +12,7 @@ An audio plugin that suggests which chord to play next, for people who don't kno
 - The small **Preview next** panel shows the current chord followed by the previewed chord. Click it to hear both chords back-to-back, one second each, without changing your selection. It is inactive until you preview a recommendation.
 - Drag a MIDI file (`.mid`) or a Studio One Musicloop (`.musicloop`) onto the plugin window to set the current chord. The plugin reads the first chord in the file (major, minor or diminished; extra notes such as a 7th are ignored) plays it, and lists the notes it read under the current chord. If those notes don't make a chord, or the file has no notes, it says so there instead.
 - Choose a major key from the header to refresh the recommendations for that key.
+- Choose a built-in sound from the **Sound** menu under the title: Soft, Electric piano, Organ, Bright or Plucked. It applies to every chord and melody on both tabs, plays the current chord so you can hear it, and is saved with the DAW project. The sounds are made in `Source/PreviewPlayback.h`.
 - Play notes on the on-screen MIDI keyboard with the mouse. It sends MIDI through the plugin; to hear those notes, route the plugin's MIDI output to an instrument in your host.
 
 The preview label stays visible after the sound ends and clears when you confirm a chord. Starting another preview or transition smoothly replaces playback and cancels any remaining sequence. Soft built-in tones require no external instrument or samples; an active audio device or host processing is required. Existing audio and incoming MIDI pass through unchanged; notes played on the on-screen keyboard are added to the outgoing MIDI stream.
@@ -73,8 +74,8 @@ Then, from the project folder:
 
 ```
 cmake -B build -DCMAKE_BUILD_TYPE=Debug
-cmake --build build --target ChordSuggester_Standalone -j 8
-open build/ChordSuggester_artefacts/Debug/Standalone/ChordSuggester.app
+cmake --build build --target EZChordsAndHarmony_Standalone -j 8
+open "build/EZChordsAndHarmony_artefacts/Debug/Standalone/EZ Chords & Harmony.app"
 ```
 
 ### Linux
@@ -93,8 +94,8 @@ Then, from the project folder:
 
 ```
 cmake -B build -DCMAKE_BUILD_TYPE=Debug
-cmake --build build --target ChordSuggester_Standalone -j 8
-./build/ChordSuggester_artefacts/Debug/Standalone/ChordSuggester
+cmake --build build --target EZChordsAndHarmony_Standalone -j 8
+"./build/EZChordsAndHarmony_artefacts/Debug/Standalone/EZ Chords & Harmony"
 ```
 
 A yellow "Audio input is muted to avoid feedback loop" bar is normal; chord previews still play. Use **Settings...** to pick an audio device.
@@ -110,20 +111,20 @@ Open the **Developer PowerShell for VS 2022** from the Start menu, go to the pro
 
 ```
 cmake -B build -DJUCE_PATH="$env:USERPROFILE\Downloads\JUCE"
-cmake --build build --config Debug --target ChordSuggester_Standalone
-.\build\ChordSuggester_artefacts\Debug\Standalone\ChordSuggester.exe
+cmake --build build --config Debug --target EZChordsAndHarmony_Standalone
+& ".\build\EZChordsAndHarmony_artefacts\Debug\Standalone\EZ Chords & Harmony.exe"
 ```
 
 Change the `JUCE_PATH` value if you put JUCE somewhere other than your Downloads folder. Visual Studio picks the build type at build time, which is why `--config Debug` is on the build command instead of the configure command.
 
-For a local VST3 build without copying into the system plugin folder, configure with `-DCHORDSUGGESTER_COPY_PLUGIN_AFTER_BUILD=OFF`. Installation remains enabled by default.
+For a local VST3 build without copying into the system plugin folder, configure with `-DEZCHORDSANDHARMONY_COPY_PLUGIN_AFTER_BUILD=OFF`. Installation remains enabled by default.
 
 ## Playback tests
 
 Enable the optional tests when configuring, then build and run them:
 
 ```
-cmake -B build -DCHORDSUGGESTER_BUILD_TESTS=ON
+cmake -B build -DEZCHORDSANDHARMONY_BUILD_TESTS=ON
 cmake --build build --config Debug --target ChordPreviewTests MelodyTests PluginInteractionTests
 ctest --test-dir build -C Debug --output-on-failure
 ```

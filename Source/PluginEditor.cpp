@@ -424,7 +424,7 @@ void RoundedKeySelectorLookAndFeel::drawComboBox (juce::Graphics& g, int width, 
 }
 
 //==============================================================================
-ChordSuggesterAudioProcessorEditor::ChordSuggesterAudioProcessorEditor (ChordSuggesterAudioProcessor& p)
+EZChordsAndHarmonyAudioProcessorEditor::EZChordsAndHarmonyAudioProcessorEditor (EZChordsAndHarmonyAudioProcessor& p)
     : AudioProcessorEditor (&p), audioProcessor (p), midiKeyboard (p.getMidiKeyboardState())
 {
     // Work out the first set of suggestions for the starting chord.
@@ -463,6 +463,7 @@ ChordSuggesterAudioProcessorEditor::ChordSuggesterAudioProcessorEditor (ChordSug
     updateMoreChords();
 
     addAndMakeVisible (midiKeyboard);
+    setWantsKeyboardFocus (true);   // Delete removes a selected progression chord
 
     addAndMakeVisible (chordsTab);
     addAndMakeVisible (melodyTab);
@@ -495,6 +496,26 @@ ChordSuggesterAudioProcessorEditor::ChordSuggesterAudioProcessorEditor (ChordSug
     timingChoice.setComponentID ("timing");
     addAndMakeVisible (progressionDisplay);
     addAndMakeVisible (pianoRoll);
+
+    // The "Sound" menu under the title: which built-in sound plays the chords and melodies.
+    // It is shown on both tabs. The sounds themselves are made in PreviewPlayback.h.
+    addAndMakeVisible (soundChoice);
+    soundChoice.setComponentID ("sound");
+    for (int i = 0; i < PreviewPlayback::numSounds; ++i)
+        soundChoice.addItem (juce::String ("Sound: ") + PreviewPlayback::soundName (PreviewPlayback::Sound (i)), i + 1);
+    soundChoice.setSelectedId (int (audioProcessor.getPreviewSound()) + 1, juce::dontSendNotification);
+    soundChoice.onChange = [this]
+    {
+        audioProcessor.setPreviewSound (PreviewPlayback::Sound (soundChoice.getSelectedId() - 1));
+
+        // Let the user hear the new sound straight away, unless something is already playing
+        // (in which case it simply carries on in the new sound).
+        if (! melodyPlaying && ! progressionPlaying)
+        {
+            if (! showingMelody) midiKeyboard.showChordPlayback (currentChord.notes);
+            audioProcessor.previewChord (currentChord);
+        }
+    };
 
     // Dragging this handle writes the melody (plus the chords, if "With chords" is on)
     // to a MIDI file and hands it to the DAW.
@@ -590,7 +611,7 @@ ChordSuggesterAudioProcessorEditor::ChordSuggesterAudioProcessorEditor (ChordSug
     setSize (1160, 760);
 }
 
-ChordSuggesterAudioProcessorEditor::~ChordSuggesterAudioProcessorEditor()
+EZChordsAndHarmonyAudioProcessorEditor::~EZChordsAndHarmonyAudioProcessorEditor()
 {
     if (explanationBox != nullptr)
     {
@@ -608,13 +629,13 @@ ChordSuggesterAudioProcessorEditor::~ChordSuggesterAudioProcessorEditor()
     audioProcessor.stopPreview();
 }
 
-int ChordSuggesterAudioProcessorEditor::barCount() const { return std::max (1, barsChoice.getSelectedId()); }
-double ChordSuggesterAudioProcessorEditor::gridSize() const
+int EZChordsAndHarmonyAudioProcessorEditor::barCount() const { return std::max (1, barsChoice.getSelectedId()); }
+double EZChordsAndHarmonyAudioProcessorEditor::gridSize() const
 {
     return timingChoice.getSelectedId() == 3 ? 0.25 : timingChoice.getSelectedId() == 2 ? 0.5 : 1.0;
 }
 
-void ChordSuggesterAudioProcessorEditor::stopMelody()
+void EZChordsAndHarmonyAudioProcessorEditor::stopMelody()
 {
     endProgressionPlayback (false);
     audioProcessor.stopPreview();
@@ -623,7 +644,7 @@ void ChordSuggesterAudioProcessorEditor::stopMelody()
     playButton.setButtonText ("Play");
 }
 
-void ChordSuggesterAudioProcessorEditor::timerCallback()
+void EZChordsAndHarmonyAudioProcessorEditor::timerCallback()
 {
     // Follow the progression playback: highlight the chord that's sounding and show it on the keyboard.
     if (progressionPlaying)
@@ -647,9 +668,13 @@ void ChordSuggesterAudioProcessorEditor::timerCallback()
     }
     pianoRoll.setPlayhead (melodyPlaying ? beat : -1);
     melodyDragHandle.setEnabled (! phrase.notes.empty());   // nothing to drag until there is a melody
+
+    // The DAW can restore a saved project after the window opens, so keep the Sound menu in step.
+    if (soundChoice.getSelectedId() != int (audioProcessor.getPreviewSound()) + 1)
+        soundChoice.setSelectedId (int (audioProcessor.getPreviewSound()) + 1, juce::dontSendNotification);
 }
 
-void ChordSuggesterAudioProcessorEditor::switchTab (bool melodyView)
+void EZChordsAndHarmonyAudioProcessorEditor::switchTab (bool melodyView)
 {
     showingMelody = melodyView;
     keySelector.setVisible (! showingMelody);
@@ -671,7 +696,7 @@ void ChordSuggesterAudioProcessorEditor::switchTab (bool melodyView)
     repaint();
 }
 
-void ChordSuggesterAudioProcessorEditor::invalidatePhrase (bool stopPlayback)
+void EZChordsAndHarmonyAudioProcessorEditor::invalidatePhrase (bool stopPlayback)
 {
     if (stopPlayback) stopMelody();
     phrase.notes.clear();
@@ -683,8 +708,9 @@ void ChordSuggesterAudioProcessorEditor::invalidatePhrase (bool stopPlayback)
     playButton.setEnabled (false);
 }
 
-void ChordSuggesterAudioProcessorEditor::refreshMelody (bool stopPlayback)
+void EZChordsAndHarmonyAudioProcessorEditor::refreshMelody (bool stopPlayback)
 {
+    selectedChip = -1;
     scaleEstimate = melody::estimate (progression.all());
     const bool usingEstimate = scaleChoice.getSelectedId() <= 1;
     scaleChoice.changeItemText (1, juce::String (scaleEstimate.best.name()));
@@ -702,7 +728,7 @@ void ChordSuggesterAudioProcessorEditor::refreshMelody (bool stopPlayback)
     repaint();
 }
 
-void ChordSuggesterAudioProcessorEditor::toggleProgressionPlayback()
+void EZChordsAndHarmonyAudioProcessorEditor::toggleProgressionPlayback()
 {
     if (progressionPlaying)
     {
@@ -719,7 +745,7 @@ void ChordSuggesterAudioProcessorEditor::toggleProgressionPlayback()
     playProgressionButton.setButtonText ("Stop");
 }
 
-void ChordSuggesterAudioProcessorEditor::endProgressionPlayback (bool stopAudio)
+void EZChordsAndHarmonyAudioProcessorEditor::endProgressionPlayback (bool stopAudio)
 {
     if (! progressionPlaying)
         return;
@@ -732,19 +758,19 @@ void ChordSuggesterAudioProcessorEditor::endProgressionPlayback (bool stopAudio)
     repaint();
 }
 
-void ChordSuggesterAudioProcessorEditor::confirmChord (const chords::Chord& chord)
+void EZChordsAndHarmonyAudioProcessorEditor::confirmChord (const chords::Chord& chord)
 {
     setCurrentChord (chord);
     progression.confirm (currentChord);
     refreshMelody (false);
 }
 
-bool ChordSuggesterAudioProcessorEditor::isChordDropTarget (juce::Point<int> position) const
+bool EZChordsAndHarmonyAudioProcessorEditor::isChordDropTarget (juce::Point<int> position) const
 {
     return currentChordBounds().contains (position) || progressionBounds().contains (position);
 }
 
-void ChordSuggesterAudioProcessorEditor::undoLastChord()
+void EZChordsAndHarmonyAudioProcessorEditor::undoLastChord()
 {
     if (! progression.removeLast())
         return;
@@ -754,13 +780,13 @@ void ChordSuggesterAudioProcessorEditor::undoLastChord()
     refreshMelody();
 }
 
-melody::Scale ChordSuggesterAudioProcessorEditor::selectedScale() const
+melody::Scale EZChordsAndHarmonyAudioProcessorEditor::selectedScale() const
 {
     const int id = scaleChoice.getSelectedId();
     return id <= 1 ? scaleEstimate.best : melody::Scale { (id - 2) % 12, id >= 14 };
 }
 
-void ChordSuggesterAudioProcessorEditor::paintMelody (juce::Graphics& g)
+void EZChordsAndHarmonyAudioProcessorEditor::paintMelody (juce::Graphics& g)
 {
     g.setColour (secondaryText);
     g.setFont (juce::FontOptions (17.0f));
@@ -787,7 +813,7 @@ void ChordSuggesterAudioProcessorEditor::paintMelody (juce::Graphics& g)
 }
 
 //==============================================================================
-void ChordSuggesterAudioProcessorEditor::setCurrentChord (const chords::Chord& newChord)
+void EZChordsAndHarmonyAudioProcessorEditor::setCurrentChord (const chords::Chord& newChord)
 {
     // Copy first: newChord may be one of the suggestions we are about to replace.
     const chords::Chord chosen = newChord;
@@ -800,7 +826,7 @@ void ChordSuggesterAudioProcessorEditor::setCurrentChord (const chords::Chord& n
     repaint();
 }
 
-void ChordSuggesterAudioProcessorEditor::updateMoreChords()
+void EZChordsAndHarmonyAudioProcessorEditor::updateMoreChords()
 {
     moreChords.clear (juce::dontSendNotification);
     moreChordOptions.clear();
@@ -857,7 +883,7 @@ void ChordSuggesterAudioProcessorEditor::updateMoreChords()
     }
 }
 
-void ChordSuggesterAudioProcessorEditor::chooseMoreChord()
+void EZChordsAndHarmonyAudioProcessorEditor::chooseMoreChord()
 {
     const int id = moreChords.getSelectedId();
     if (id < 1 || id > (int) moreChordOptions.size())
@@ -873,7 +899,7 @@ void ChordSuggesterAudioProcessorEditor::chooseMoreChord()
     refreshMelody (false);
 }
 
-void ChordSuggesterAudioProcessorEditor::updateKeySelection()
+void EZChordsAndHarmonyAudioProcessorEditor::updateKeySelection()
 {
     const int selectedId = keySelector.getSelectedId();
     if (selectedId < 1 || selectedId > 12)
@@ -886,22 +912,22 @@ void ChordSuggesterAudioProcessorEditor::updateKeySelection()
     repaint();
 }
 
-juce::Rectangle<int> ChordSuggesterAudioProcessorEditor::currentChordBounds() const
+juce::Rectangle<int> EZChordsAndHarmonyAudioProcessorEditor::currentChordBounds() const
 {
     return { 24, 120, leftColumnWidth - 48, 148 };
 }
 
-juce::Rectangle<int> ChordSuggesterAudioProcessorEditor::transitionBounds() const
+juce::Rectangle<int> EZChordsAndHarmonyAudioProcessorEditor::transitionBounds() const
 {
     return { 24, 294, leftColumnWidth - 48, 96 };
 }
 
-juce::Rectangle<int> ChordSuggesterAudioProcessorEditor::progressionBounds() const
+juce::Rectangle<int> EZChordsAndHarmonyAudioProcessorEditor::progressionBounds() const
 {
     return { 24, 440, leftColumnWidth - 48, getHeight() - 112 - 30 - 66 - 440 };
 }
 
-void ChordSuggesterAudioProcessorEditor::paintProgression (juce::Graphics& g)
+void EZChordsAndHarmonyAudioProcessorEditor::paintProgression (juce::Graphics& g)
 {
     const auto area = progressionBounds();
     g.setColour (secondaryText);
@@ -924,6 +950,76 @@ void ChordSuggesterAudioProcessorEditor::paintProgression (juce::Graphics& g)
     g.setColour (softTeal);
     g.drawRoundedRectangle (area.toFloat(), 12.0f, 1.0f);
 
+    const juce::Font chipFont (juce::FontOptions (15.0f).withStyle ("Bold"));
+    const juce::Font numeralFont (juce::FontOptions (13.0f));
+    const int arrowWidth = 20;
+    const auto chips = progressionChips();
+
+    g.setFont (chipFont);
+    for (size_t i = 0; i < chips.size(); ++i)
+    {
+        const auto& chip = chips[i];
+        g.setColour (chip.current ? accentBlue : juce::Colour (0xff2b3240));
+        g.fillRoundedRectangle (chip.bounds.toFloat(), 8.0f);
+        if (chip.index >= 0 && chip.index == selectedChip)
+        {
+            g.setColour (juce::Colours::white);
+            g.drawRoundedRectangle (chip.bounds.toFloat().reduced (1.0f), 8.0f, 2.0f);
+        }
+        if (chip.index >= 0 && chip.index == progressionSounding)
+        {
+            g.setColour (juce::Colour (0xfff8cc6a));   // the same gold as the melody playhead
+            g.drawRoundedRectangle (chip.bounds.toFloat().reduced (1.0f), 8.0f, 2.5f);
+        }
+        g.setColour (juce::Colour (0xfff1f3f6));
+        if (chip.numeral.isEmpty())
+        {
+            g.drawText (chip.text, chip.bounds, juce::Justification::centred);
+        }
+        else
+        {
+            // Chord name on the left, its Roman numeral after it in a lighter style.
+            const auto textArea = chip.bounds.reduced (11, 0);
+            g.setFont (chipFont);
+            g.drawText (chip.text, textArea, juce::Justification::centredLeft);
+            g.setColour (juce::Colour (0xfff1f3f6).withAlpha (chip.current ? 0.85f : 0.62f));
+            g.setFont (numeralFont);
+            g.drawText (chip.numeral, textArea, juce::Justification::centredRight);
+            g.setFont (chipFont);
+        }
+
+        // Arrow to the next chip when it's on the same line.
+        if (i + 1 < chips.size() && chips[i + 1].bounds.getY() == chip.bounds.getY())
+        {
+            g.setColour (secondaryText);
+            g.drawText (juce::String::fromUTF8 ("\xe2\x86\x92"), chip.bounds.getRight(), chip.bounds.getY(),
+                        arrowWidth, chip.bounds.getHeight(), juce::Justification::centred);
+        }
+    }
+
+    // The selected chip gets a small x for deleting it (not when it's the only chord left).
+    for (const auto& chip : chips)
+        if (chip.index >= 0 && chip.index == selectedChip && progression.all().size() > 1)
+        {
+            const auto cross = chipDeleteBounds (chip).toFloat();
+            g.setColour (juce::Colour (0xffe5484d));
+            g.fillEllipse (cross);
+            g.setColour (juce::Colours::white);
+            const auto c = cross.reduced (5.5f);
+            g.drawLine (c.getX(), c.getY(), c.getRight(), c.getBottom(), 1.8f);
+            g.drawLine (c.getRight(), c.getY(), c.getX(), c.getBottom(), 1.8f);
+        }
+
+    g.setColour (secondaryText);
+    g.setFont (juce::FontOptions (12.0f));
+    g.drawText (selectedChip >= 0
+                    ? juce::String::fromUTF8 ("Drag a suggestion onto it to replace \xc2\xb7 x or Delete removes")
+                    : juce::String ("Click a chord to change or remove it"),
+                area.reduced (12, 6).removeFromBottom (18), juce::Justification::centredLeft);
+}
+
+std::vector<EZChordsAndHarmonyAudioProcessorEditor::ProgressionChip> EZChordsAndHarmonyAudioProcessorEditor::progressionChips() const
+{
     // Chords as chips with arrows between, wrapping onto new lines. If they don't all
     // fit, the oldest are left out and a "..." chip stands in for them.
     const juce::Font chipFont (juce::FontOptions (15.0f).withStyle ("Bold"));
@@ -932,12 +1028,12 @@ void ChordSuggesterAudioProcessorEditor::paintProgression (juce::Graphics& g)
     const juce::Font numeralFont (juce::FontOptions (13.0f));
     const int numeralGap = 7;
     const auto& all = progression.all();
-    const auto inner = area.reduced (12, 10);
+    // The bottom of the panel is kept for the editing hint.
+    const auto inner = progressionBounds().reduced (12, 10).withTrimmedBottom (18);
     const int chipHeight = 28, lineGap = 8, arrowWidth = 20;
     const auto ellipsis = juce::String::fromUTF8 ("\xe2\x80\xa6");
 
-    struct Chip { juce::String text, numeral; juce::Rectangle<int> bounds; bool current; int index; };
-    const auto layout = [&] (size_t first, std::vector<Chip>& chips)
+    const auto layout = [&] (size_t first, std::vector<ProgressionChip>& chips)
     {
         chips.clear();
         int x = inner.getX(), y = inner.getY();
@@ -965,8 +1061,10 @@ void ChordSuggesterAudioProcessorEditor::paintProgression (juce::Graphics& g)
         return chips.empty() || chips.back().bounds.getBottom() <= inner.getBottom();
     };
 
-    std::vector<Chip> chips;
+    std::vector<ProgressionChip> chips;
     for (size_t first = 0; first < all.size() && ! layout (first, chips); ++first) {}
+    return chips;
+}
 
     g.setFont (chipFont);
     for (size_t i = 0; i < chips.size(); ++i)
@@ -996,26 +1094,60 @@ void ChordSuggesterAudioProcessorEditor::paintProgression (juce::Graphics& g)
             g.setFont (chipFont);
         }
 
-        // Arrow to the next chip when it's on the same line.
-        if (i + 1 < chips.size() && chips[i + 1].bounds.getY() == chip.bounds.getY())
-        {
-            g.setColour (secondaryText);
-            g.drawText (juce::String::fromUTF8 ("\xe2\x86\x92"), chip.bounds.getRight(), chip.bounds.getY(),
-                        arrowWidth, chipHeight, juce::Justification::centred);
-        }
-    }
+juce::Rectangle<int> EZChordsAndHarmonyAudioProcessorEditor::chipDeleteBounds (const ProgressionChip& chip) const
+{
+    return juce::Rectangle<int> (18, 18).withCentre ({ chip.bounds.getRight() - 1, chip.bounds.getY() + 1 });
 }
 
-void ChordSuggesterAudioProcessorEditor::updateCursor (juce::Point<int> position)
+bool EZChordsAndHarmonyAudioProcessorEditor::selectedChipDeleteContains (juce::Point<int> position) const
+{
+    if (selectedChip < 0 || progression.all().size() <= 1)
+        return false;
+    for (const auto& chip : progressionChips())
+        if (chip.index == selectedChip)
+            return chipDeleteBounds (chip).expanded (2).contains (position);
+    return false;
+}
+
+void EZChordsAndHarmonyAudioProcessorEditor::deleteProgressionChord (int index)
+{
+    const bool wasLast = index == (int) progression.all().size() - 1;
+    if (index < 0 || ! progression.removeAt ((size_t) index))
+        return;
+
+    selectedChip = -1;
+    // Removing the newest chord steps back, the same as Undo: the chord before it becomes yours again.
+    if (wasLast)
+        setCurrentChord (progression.all().back());
+    refreshMelody();
+}
+
+void EZChordsAndHarmonyAudioProcessorEditor::replaceProgressionChord (int index, const chords::Chord& chord)
+{
+    if (index < 0 || ! progression.replaceAt ((size_t) index, chord))
+        return;
+
+    selectedChip = -1;
+    // Replacing the newest chord changes the chord you have, so the suggestions follow it.
+    if (index == (int) progression.all().size() - 1)
+        setCurrentChord (chord);
+    refreshMelody (false);
+    midiKeyboard.showChordPlayback (chord.notes);
+    endProgressionPlayback (false);
+    audioProcessor.previewChord (chord);
+}
+
+void EZChordsAndHarmonyAudioProcessorEditor::updateCursor (juce::Point<int> position)
 {
     if (showingMelody) return;
     const bool clickable = rowAt (position) >= 0 || currentChordBounds().contains (position)
         || numeralsHelpBounds().contains (position)
+        || progressionChipAt (position) >= 0 || selectedChipDeleteContains (position)
         || (previewedChord.has_value() && transitionBounds().contains (position));
     setMouseCursor (clickable ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
 }
 
-juce::Rectangle<int> ChordSuggesterAudioProcessorEditor::rowBounds (int index) const
+juce::Rectangle<int> EZChordsAndHarmonyAudioProcessorEditor::rowBounds (int index) const
 {
     const int left = leftColumnWidth + 28;
     const int top = 114;
@@ -1026,7 +1158,7 @@ juce::Rectangle<int> ChordSuggesterAudioProcessorEditor::rowBounds (int index) c
     return { left, top + index * (rowHeight + gap), getWidth() - left - 24, rowHeight };
 }
 
-int ChordSuggesterAudioProcessorEditor::rowAt (juce::Point<int> position) const
+int EZChordsAndHarmonyAudioProcessorEditor::rowAt (juce::Point<int> position) const
 {
     for (int i = 0; i < (int) suggestions.size(); ++i)
         if (rowBounds (i).contains (position))
@@ -1035,7 +1167,7 @@ int ChordSuggesterAudioProcessorEditor::rowAt (juce::Point<int> position) const
     return -1;
 }
 
-juce::Rectangle<int> ChordSuggesterAudioProcessorEditor::explainButtonBounds (int index) const
+juce::Rectangle<int> EZChordsAndHarmonyAudioProcessorEditor::explainButtonBounds (int index) const
 {
     const auto row = rowBounds (index);
     const int width = 104, height = 22;
@@ -1048,7 +1180,7 @@ juce::Rectangle<int> ChordSuggesterAudioProcessorEditor::explainButtonBounds (in
     return { row.getRight() - 124 - width, row.getCentreY() - height / 2, width, height };
 }
 
-int ChordSuggesterAudioProcessorEditor::explainButtonAt (juce::Point<int> position) const
+int EZChordsAndHarmonyAudioProcessorEditor::explainButtonAt (juce::Point<int> position) const
 {
     for (int i = 0; i < (int) suggestions.size(); ++i)
         if (explainButtonBounds (i).contains (position))
@@ -1057,7 +1189,7 @@ int ChordSuggesterAudioProcessorEditor::explainButtonAt (juce::Point<int> positi
     return -1;
 }
 
-void ChordSuggesterAudioProcessorEditor::showExplanation (int index)
+void EZChordsAndHarmonyAudioProcessorEditor::showExplanation (int index)
 {
     if (index < 0 || index >= (int) suggestions.size())
         return;
@@ -1068,7 +1200,7 @@ void ChordSuggesterAudioProcessorEditor::showExplanation (int index)
     explanationBox = &juce::CallOutBox::launchAsynchronously (std::move (panel), explainButtonBounds (index), this);
 }
 
-juce::Rectangle<int> ChordSuggesterAudioProcessorEditor::numeralsHelpBounds() const
+juce::Rectangle<int> EZChordsAndHarmonyAudioProcessorEditor::numeralsHelpBounds() const
 {
     // Just to the right of the "Your progression" heading.
     const auto area = progressionBounds();
@@ -1077,7 +1209,7 @@ juce::Rectangle<int> ChordSuggesterAudioProcessorEditor::numeralsHelpBounds() co
     return { area.getX() + headingWidth + 12, area.getY() - 28, 86, 20 };
 }
 
-void ChordSuggesterAudioProcessorEditor::showNumeralsHelp()
+void EZChordsAndHarmonyAudioProcessorEditor::showNumeralsHelp()
 {
     // The wording comes from chords::explainRomanNumerals in ChordExplain.h, using the chosen key for its examples.
     auto panel = std::make_unique<ExplanationPanel> (chords::explainRomanNumerals (keyRoot));
@@ -1085,7 +1217,7 @@ void ChordSuggesterAudioProcessorEditor::showNumeralsHelp()
 }
 
 //==============================================================================
-void ChordSuggesterAudioProcessorEditor::paint (juce::Graphics& g)
+void EZChordsAndHarmonyAudioProcessorEditor::paint (juce::Graphics& g)
 {
     drawGrainyGradient (g, getLocalBounds());
 
@@ -1285,6 +1417,7 @@ void ChordSuggesterAudioProcessorEditor::paint (juce::Graphics& g)
     if (draggingChord && dragRow >= 0 && dragRow < (int) suggestions.size())
     {
         const bool overTarget = isChordDropTarget (dragPosition);
+        const int overChip = progressionChipAt (dragPosition);
         for (const auto target : { currentChordBounds(), progressionBounds() })
         {
             const bool hovered = target.contains (dragPosition);
@@ -1293,6 +1426,17 @@ void ChordSuggesterAudioProcessorEditor::paint (juce::Graphics& g)
             g.setColour (warmCream.withAlpha (hovered ? 0.82f : 0.46f));
             g.drawRoundedRectangle (target.toFloat().reduced (1.0f), 12.0f, hovered ? 3.0f : 2.0f);
         }
+
+        // Over a chord in the progression: that chord will be replaced.
+        for (const auto& chip : progressionChips())
+            if (chip.index >= 0 && chip.index == overChip)
+            {
+                g.setColour (juce::Colours::white);
+                g.drawRoundedRectangle (chip.bounds.toFloat().expanded (2.0f), 9.0f, 3.0f);
+                g.setFont (juce::FontOptions (12.0f).withStyle ("Bold"));
+                g.drawText ("Replace", chip.bounds.withY (chip.bounds.getBottom() + 3).withHeight (16).expanded (20, 0),
+                            juce::Justification::centred);
+            }
 
         const auto& dragged = suggestions[(size_t) dragRow];
         const auto ghost = juce::Rectangle<float> (110.0f, 48.0f).withCentre (dragPosition.toFloat());
@@ -1306,7 +1450,7 @@ void ChordSuggesterAudioProcessorEditor::paint (juce::Graphics& g)
     }
 }
 
-void ChordSuggesterAudioProcessorEditor::resized()
+void EZChordsAndHarmonyAudioProcessorEditor::resized()
 {
     keySelector.setBounds (getWidth() - 200, 22, 176, 32);
     moreChords.setBounds (getWidth() - 264, 76, 240, 32);
@@ -1319,6 +1463,7 @@ void ChordSuggesterAudioProcessorEditor::resized()
     const auto keyboardArea = juce::Rectangle<int> (24, getHeight() - 112, leftColumnWidth - 48, 88);
     midiKeyboard.setBounds (keyboardArea.reduced (1));
     midiKeyboard.setKeyWidth (float (midiKeyboard.getWidth()) / 7.0f);
+    soundChoice.setBounds (24, 45, 172, 21);
     chordsTab.setBounds (280, 16, 100, 40);
     melodyTab.setBounds (400, 16, 110, 40);
     scaleChoice.setBounds (getWidth() - 285, 22, 261, 32);
@@ -1336,7 +1481,7 @@ void ChordSuggesterAudioProcessorEditor::resized()
 }
 
 //==============================================================================
-void ChordSuggesterAudioProcessorEditor::mouseDown (const juce::MouseEvent& event)
+void EZChordsAndHarmonyAudioProcessorEditor::mouseDown (const juce::MouseEvent& event)
 {
     if (showingMelody || ! event.mods.isLeftButtonDown() || event.getNumberOfClicks() != 1)
         return;
@@ -1352,6 +1497,30 @@ void ChordSuggesterAudioProcessorEditor::mouseDown (const juce::MouseEvent& even
     {
         showNumeralsHelp();
         return;
+    }
+
+    // "Your progression": the x on a selected chip deletes it; clicking a chip selects it and plays it.
+    if (selectedChipDeleteContains (position))
+    {
+        deleteProgressionChord (selectedChip);
+        updateCursor (position);
+        return;
+    }
+    if (const int chip = progressionChipAt (position); chip >= 0)
+    {
+        selectedChip = chip;
+        grabKeyboardFocus();
+        const auto& chord = progression.all()[(size_t) chip];
+        midiKeyboard.showChordPlayback (chord.notes);
+        endProgressionPlayback (false);
+        audioProcessor.previewChord (chord);
+        repaint();
+        return;
+    }
+    if (selectedChip >= 0)
+    {
+        selectedChip = -1;   // clicking anywhere else lets go of the selection
+        repaint();
     }
 
     const int row = rowAt (position);
@@ -1382,7 +1551,7 @@ void ChordSuggesterAudioProcessorEditor::mouseDown (const juce::MouseEvent& even
     updateCursor (event.getPosition());
 }
 
-void ChordSuggesterAudioProcessorEditor::mouseDoubleClick (const juce::MouseEvent& event)
+void EZChordsAndHarmonyAudioProcessorEditor::mouseDoubleClick (const juce::MouseEvent& event)
 {
     if (showingMelody || ! event.mods.isLeftButtonDown() || event.getNumberOfClicks() != 2)
         return;
@@ -1395,7 +1564,7 @@ void ChordSuggesterAudioProcessorEditor::mouseDoubleClick (const juce::MouseEven
     updateCursor (event.getPosition());
 }
 
-void ChordSuggesterAudioProcessorEditor::mouseDrag (const juce::MouseEvent& event)
+void EZChordsAndHarmonyAudioProcessorEditor::mouseDrag (const juce::MouseEvent& event)
 {
     if (showingMelody || dragRow < 0)
         return;
@@ -1410,15 +1579,40 @@ void ChordSuggesterAudioProcessorEditor::mouseDrag (const juce::MouseEvent& even
     repaint();
 }
 
-void ChordSuggesterAudioProcessorEditor::mouseUp (const juce::MouseEvent& event)
+bool EZChordsAndHarmonyAudioProcessorEditor::keyPressed (const juce::KeyPress& key)
+{
+    if (showingMelody || selectedChip < 0)
+        return false;
+
+    if (key == juce::KeyPress::deleteKey || key == juce::KeyPress::backspaceKey)
+    {
+        deleteProgressionChord (selectedChip);
+        return true;
+    }
+    if (key == juce::KeyPress::escapeKey)
+    {
+        selectedChip = -1;
+        repaint();
+        return true;
+    }
+    return false;
+}
+
+void EZChordsAndHarmonyAudioProcessorEditor::mouseUp (const juce::MouseEvent& event)
 {
     const int row = dragRow;
-    const bool dropped = draggingChord && row >= 0 && row < (int) suggestions.size()
-                         && isChordDropTarget (event.getPosition());
+    const bool hasChord = draggingChord && row >= 0 && row < (int) suggestions.size();
+    const int targetChip = hasChord ? progressionChipAt (event.getPosition()) : -1;
+    const bool dropped = hasChord && isChordDropTarget (event.getPosition());
     dragRow = -1;
     draggingChord = false;
 
-    if (dropped)
+    if (targetChip >= 0)
+    {
+        // Dropped onto a chord in the progression: swap that chord for this one.
+        replaceProgressionChord (targetChip, suggestions[(size_t) row].chord);
+    }
+    else if (dropped)
     {
         const chords::Chord chosen = suggestions[(size_t) row].chord;
         confirmChord (chosen);
@@ -1431,7 +1625,7 @@ void ChordSuggesterAudioProcessorEditor::mouseUp (const juce::MouseEvent& event)
     repaint();
 }
 
-void ChordSuggesterAudioProcessorEditor::mouseMove (const juce::MouseEvent& event)
+void EZChordsAndHarmonyAudioProcessorEditor::mouseMove (const juce::MouseEvent& event)
 {
     const int row = showingMelody ? -1 : rowAt (event.getPosition());
     const int explain = showingMelody ? -1 : explainButtonAt (event.getPosition());
@@ -1447,7 +1641,7 @@ void ChordSuggesterAudioProcessorEditor::mouseMove (const juce::MouseEvent& even
     }
 }
 
-void ChordSuggesterAudioProcessorEditor::mouseExit (const juce::MouseEvent&)
+void EZChordsAndHarmonyAudioProcessorEditor::mouseExit (const juce::MouseEvent&)
 {
     setMouseCursor (juce::MouseCursor::NormalCursor);
     if (hoveredRow != -1 || hoveredExplain != -1 || hoveredNumeralsHelp)
@@ -1496,7 +1690,7 @@ juce::String playedNoteNames (std::vector<int> notes, bool useFlats)
 }
 }
 
-bool ChordSuggesterAudioProcessorEditor::isInterestedInFileDrag (const juce::StringArray& files)
+bool EZChordsAndHarmonyAudioProcessorEditor::isInterestedInFileDrag (const juce::StringArray& files)
 {
     for (const auto& path : files)
         if (isMidiFile (path))
@@ -1505,19 +1699,19 @@ bool ChordSuggesterAudioProcessorEditor::isInterestedInFileDrag (const juce::Str
     return false;
 }
 
-void ChordSuggesterAudioProcessorEditor::fileDragEnter (const juce::StringArray&, int, int)
+void EZChordsAndHarmonyAudioProcessorEditor::fileDragEnter (const juce::StringArray&, int, int)
 {
     midiDragHovering = true;
     repaint();
 }
 
-void ChordSuggesterAudioProcessorEditor::fileDragExit (const juce::StringArray&)
+void EZChordsAndHarmonyAudioProcessorEditor::fileDragExit (const juce::StringArray&)
 {
     midiDragHovering = false;
     repaint();
 }
 
-void ChordSuggesterAudioProcessorEditor::filesDropped (const juce::StringArray& files, int, int)
+void EZChordsAndHarmonyAudioProcessorEditor::filesDropped (const juce::StringArray& files, int, int)
 {
     midiDragHovering = false;
 

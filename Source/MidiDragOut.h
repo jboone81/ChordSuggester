@@ -101,7 +101,7 @@ inline bool writePhrase (const melody::Phrase& phrase, bool includeChords, const
 inline juce::File writePhraseToTempFile (const melody::Phrase& phrase, bool includeChords)
 {
     const auto file = juce::File::getSpecialLocation (juce::File::tempDirectory)
-                          .getChildFile ("ChordSuggester Melody.mid");
+                          .getChildFile ("EZ Chords & Harmony Melody.mid");
 
     if (! writePhrase (phrase, includeChords, file))
         return {};

@@ -116,9 +116,26 @@ int main()
 {
     juce::ScopedJuceInitialiser_GUI gui;
     testEditing();
-    ChordSuggesterAudioProcessor processor;
+    EZChordsAndHarmonyAudioProcessor processor;
+    for (const auto* tag : { "EZChordsAndHarmony", "Chord" "Suggester" })
+    {
+        juce::XmlElement state (tag);
+        state.setAttribute ("sound", int (PreviewPlayback::Sound::organ));
+        juce::MemoryBlock data;
+        juce::AudioProcessor::copyXmlToBinary (state, data);
+        processor.setPreviewSound (PreviewPlayback::Sound::soft);
+        processor.setStateInformation (data.getData(), int (data.getSize()));
+        check (processor.getPreviewSound() == PreviewPlayback::Sound::organ,
+               "Current and legacy saved state restore the sound");
+    }
+    juce::MemoryBlock savedState;
+    processor.getStateInformation (savedState);
+    const auto savedXml = juce::AudioProcessor::getXmlFromBinary (savedState.getData(), int (savedState.getSize()));
+    check (savedXml != nullptr && savedXml->hasTagName ("EZChordsAndHarmony"),
+           "Saved state uses the new product identifier");
+    processor.setPreviewSound (PreviewPlayback::Sound::soft);
     processor.prepareToPlay (48000, 128);
-    ChordSuggesterAudioProcessorEditor editor (processor);
+    EZChordsAndHarmonyAudioProcessorEditor editor (processor);
     check (history (editor).getText() == "C", "Starting chord recorded once");
     editor.mouseDown (event (editor, 1));
     check (history (editor).getText() == "C", "UI preview excluded from history");
@@ -238,7 +255,7 @@ int main()
             choice->onChange();
         }
     check (! button (editor, "Play").isEnabled(), "Scale change invalidates phrase");
-    ChordSuggesterAudioProcessorEditor reopened (processor);
+    EZChordsAndHarmonyAudioProcessorEditor reopened (processor);
     check (history (reopened).getText() == "C", "New editor resets prototype history");
     // Dragging a suggestion onto "Your chord" selects it, like a double-click; letting go elsewhere does nothing.
     const juce::Point<float> rowPoint { 600.0f, 150.0f };
@@ -251,5 +268,28 @@ int main()
     reopened.mouseDrag (dragEvent (reopened, { 700.0f, 400.0f }, rowPoint));
     reopened.mouseUp (dragEvent (reopened, { 700.0f, 400.0f }, rowPoint));
     check (history (reopened).getText() == afterDrop, "Dropping a suggestion elsewhere changes nothing");
+
+    // Editing "Your progression": click a chord to select it, Delete removes it, and dropping a
+    // suggestion onto a chord replaces it. The first chip starts at the panel's top-left corner.
+    const juce::Point<float> firstChip { 46.0f, 464.0f };
+    const auto chordCount = [&]
+    {
+        const auto text = history (reopened).getText();
+        int count = 1;
+        for (int at = text.indexOf (" -> "); at >= 0; at = text.indexOf (at + 1, " -> ")) ++count;
+        return count;
+    };
+    const int before = chordCount();
+    reopened.mouseDown (dragEvent (reopened, firstChip, firstChip));
+    reopened.mouseUp (dragEvent (reopened, firstChip, firstChip));
+    check (reopened.keyPressed (juce::KeyPress (juce::KeyPress::deleteKey)), "Delete acts on a selected chord");
+    check (chordCount() == before - 1 && ! history (reopened).getText().startsWith ("C -> "), "Delete removes the selected chord");
+    const auto firstName = history (reopened).getText().upToFirstOccurrenceOf (" -> ", false, false);
+    reopened.mouseDown (dragEvent (reopened, rowPoint, rowPoint));
+    reopened.mouseDrag (dragEvent (reopened, { 300.0f, 300.0f }, rowPoint));
+    reopened.mouseUp (dragEvent (reopened, firstChip, rowPoint));
+    check (chordCount() == before - 1 && history (reopened).getText().upToFirstOccurrenceOf (" -> ", false, false) != firstName,
+           "Dropping a suggestion on a chord replaces it");
+    check (! reopened.keyPressed (juce::KeyPress (juce::KeyPress::deleteKey)), "Nothing is selected after an edit");
     std::cout << "Plugin interaction and passthrough tests passed\n";
 }

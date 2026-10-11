@@ -17,6 +17,18 @@ class PreviewPlayback
         bool loop = false, melody = false;
     };
 public:
+    // The built-in sounds every chord and melody can be played with.
+    enum class Sound { soft, electricPiano, organ, bright, plucked };
+    static constexpr int numSounds = 5;
+    static const char* soundName (Sound sound)
+    {
+        static const char* names[numSounds] = { "Soft", "Electric piano", "Organ", "Bright", "Plucked" };
+        return names[std::clamp (int (sound), 0, numSounds - 1)];
+    }
+    // Safe to call from the interface while audio is playing. Takes effect within one audio block.
+    void setSound (Sound newSound) { sound.store (std::clamp (int (newSound), 0, numSounds - 1), std::memory_order_release); }
+    Sound getSound() const { return Sound (sound.load (std::memory_order_acquire)); }
+
     void chord (const chords::Chord& first, const chords::Chord* second = nullptr)
     {
         Request request;
@@ -88,6 +100,7 @@ public:
     void beginBlock()
     {
         backingTarget = backingEnabled.load (std::memory_order_acquire) != 0 ? 1.0 : 0.0;
+        activeSound = sound.load (std::memory_order_acquire);
         if (consume())
         {
             pending = slots[front];
@@ -126,7 +139,7 @@ public:
                     noteIncrement = increment (note.midi);
                     noteStarted = true;
                 }
-                tone += oscillator (notePhase, noteIncrement) * envelope (position - start, samples (note.duration)) * 0.06;
+                tone += voice (notePhase, noteIncrement, position - start) * envelope (position - start, samples (note.duration)) * 0.06;
             }
         }
         const int chordIndex = int (position / std::max (int64_t (1), samples (active.chordSeconds)));
@@ -139,7 +152,8 @@ public:
                 for (int i = 0; i < 3; ++i) chordIncrements[i] = increment (active.chords[chordIndex][i]);
             }
             double chord = 0;
-            for (int i = 0; i < 3; ++i) chord += oscillator (chordPhases[i], chordIncrements[i]);
+            const int64_t chordAge = position - samples (chordIndex * active.chordSeconds);
+            for (int i = 0; i < 3; ++i) chord += voice (chordPhases[i], chordIncrements[i], chordAge);
             tone += chord * envelope (position - samples (chordIndex * active.chordSeconds), samples (active.chordSeconds))
                 * (active.melody ? 0.025 * backingGain : 0.06);
         }
@@ -175,6 +189,51 @@ private:
         phase += increment;
         if (phase >= twoPi) phase -= twoPi;
         return value;
+    }
+    // One sample of one note in the chosen sound. `age` is how many samples the note has been
+    // sounding, which lets some sounds change or fade as the note rings.
+    // Each sound is built from sine waves at whole multiples of the note's pitch ("harmonics"):
+    // more and stronger harmonics make a brighter sound.
+    double voice (double& phase, double increment, int64_t age) const
+    {
+        if (activeSound == int (Sound::soft))
+            return oscillator (phase, increment);   // a single plain sine wave
+
+        const double p = phase;
+        phase += increment;
+        if (phase >= twoPi) phase -= twoPi;
+        const double seconds = double (age) / sampleRate;
+
+        switch (Sound (activeSound))
+        {
+            case Sound::electricPiano:
+            {
+                // A sine wave whose shape is bent by a second one. The bend is strong at the
+                // start (a bright "ting") and relaxes, while the whole note slowly fades.
+                const double bend = 0.35 + 1.6 * std::exp (-seconds * 7.0);
+                return 1.25 * std::sin (p + bend * std::sin (p)) * std::exp (-seconds);
+            }
+            case Sound::organ:
+                // A few strong low harmonics, held steady for as long as the note lasts.
+                return 0.7 * (std::sin (p) + 0.5 * std::sin (2 * p) + 0.3 * std::sin (3 * p)
+                              + 0.25 * std::sin (4 * p) + 0.12 * std::sin (6 * p));
+            case Sound::bright:
+            {
+                // Eight harmonics, each quieter than the last: a buzzy, string-like tone.
+                double value = 0;
+                for (int n = 1; n <= 8; ++n) value += std::sin (n * p) / n;
+                return 0.55 * value;
+            }
+            case Sound::plucked:
+            {
+                // Like a plucked string: bright at first, with the higher harmonics dying away fastest.
+                double value = 0;
+                for (int n = 1; n <= 6; ++n) value += std::sin (n * p) / n * std::exp (-seconds * (1.0 + 0.9 * n));
+                return 0.85 * value;
+            }
+            case Sound::soft: break;
+        }
+        return std::sin (p);
     }
     double envelope (int64_t local, int64_t duration) const
     {
@@ -213,6 +272,8 @@ private:
     std::atomic<unsigned> middle { 1 };
     std::atomic<int> visiblePosition { -1 };
     std::atomic<int> backingEnabled { 0 };
+    std::atomic<int> sound { 0 };   // the Sound the interface has chosen
+    int activeSound = 0;            // the audio thread's copy, refreshed every block
     unsigned front = 0, back = 2;
     Request active {}, pending {};
     bool hasPending = false, noteStarted = false;
