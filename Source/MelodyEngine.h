@@ -91,6 +91,20 @@ public:
         history.pop_back();
         return true;
     }
+    // Removes the chord at this position, always keeping at least one. False if it can't.
+    bool removeAt (size_t index)
+    {
+        if (history.size() <= 1 || index >= history.size()) return false;
+        history.erase (history.begin() + (std::ptrdiff_t) index);
+        return true;
+    }
+    // Swaps the chord at this position for another. False if there is no such position.
+    bool replaceAt (size_t index, const chords::Chord& chord)
+    {
+        if (index >= history.size()) return false;
+        history[index] = chord;
+        return true;
+    }
     const std::vector<chords::Chord>& all() const { return history; }
     std::vector<chords::Chord> recent() const
     {

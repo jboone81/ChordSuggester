@@ -47,6 +47,13 @@ int main()
     check (! history.removeLast() && history.all().size() == 1, "Undo keeps the first chord");
     history.confirm (chords[4]);
     check (history.removeLast() && history.all().size() == 1 && history.all().back().name == "Am", "Undo removes the latest chord");
+    melody::Progression edits (chords[0]);   // C F C
+    edits.confirm (chords[3]);
+    edits.confirm (chords[0]);
+    check (edits.removeAt (1) && edits.all().size() == 2 && edits.all()[1].name == "C", "Remove a chord from the middle");
+    check (edits.replaceAt (0, chords[4]) && edits.all()[0].name == "G", "Replace a chord");
+    check (! edits.replaceAt (5, chords[4]) && ! edits.removeAt (5), "Out-of-range edits rejected");
+    check (edits.removeAt (0) && ! edits.removeAt (0) && edits.all().size() == 1, "The last chord is never removed");
     const auto estimated = melody::estimate (progression);
     check (estimated.best.root == 0 && ! estimated.best.minor, "C Am F G estimates C major");
     const auto minor = melody::estimate ({ chords[5], chords[1], chords[2], chords[5] });
