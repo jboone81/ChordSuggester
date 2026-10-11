@@ -6,8 +6,11 @@ An audio plugin that suggests which chord to play next, for people who don't kno
 
 - Single-click a recommendation to hear its three notes together for one second. The current chord and recommendations stay unchanged.
 - Double-click a recommendation to select it as the current chord and get fresh recommendations, without restarting the preview.
+- Click **Explain why** on a recommendation to read, in plain language, why that chord works after the current one: which notes the two chords share and how the others move, the job the chord does in the key, and how often real songs make the same move. The wording comes from `chords::explain` in `Source/ChordExplain.h`.
+- In **Your progression**, each chord shows its Roman numeral in the chosen key after its name (in C major: C is I, Am is vi, G is V). Capitals are major chords, small letters minor, and a degree sign diminished; a chord from outside the key gets a b or # in front (Bb is bVII). The numerals follow the **Key** menu and come from `chords::romanNumeral` in `Source/ChordEngine.h`. The small **Explain why** tag beside the heading opens a short explanation of what the numerals mean, with examples from the chosen key.
 - Click the current chord to replay it.
 - The small **Preview next** panel shows the current chord followed by the previewed chord. Click it to hear both chords back-to-back, one second each, without changing your selection. It is inactive until you preview a recommendation.
+- Drag a MIDI file (`.mid`) or a Studio One Musicloop (`.musicloop`) onto the plugin window to set the current chord. The plugin reads the first chord in the file (major, minor or diminished; extra notes such as a 7th are ignored) plays it, and lists the notes it read under the current chord. If those notes don't make a chord, or the file has no notes, it says so there instead.
 - Choose a major key from the header to refresh the recommendations for that key.
 - Play notes on the on-screen MIDI keyboard with the mouse. It sends MIDI through the plugin; to hear those notes, route the plugin's MIDI output to an instrument in your host.
 
@@ -19,11 +22,13 @@ The **Chords** and **Melody** tabs share the same plugin. The starting chord and
 
 In **Melody**, review the estimated major or natural-minor scale and its notes. An alternative appears when the progression is ambiguous. Use the key/scale menu to override the estimate. The estimate uses the full confirmed history.
 
-Choose **Bars** (1, 2, 4, or 8) and **Timing** (quarter, eighth, or sixteenth notes), then click **New suggestion**. Defaults are four bars and eighth notes. Short progressions repeat to fill the chosen length; longer histories use their most recent chords. Each bar corresponds to one chord in 4/4 at a fixed 120 BPM. Generated notes stay in scale and favor chord tones on beats one and three.
+Choose **Bars** (1, 2, 3, or 4) and **Timing** (quarter, eighth, or sixteenth notes), then click **New suggestion**. Defaults are four bars and eighth notes. Short progressions repeat to fill the chosen length; longer histories use their most recent chords. Each bar corresponds to one chord in 4/4 at a fixed 120 BPM. Generated notes stay in scale and favor chord tones on beats one and three. Timing sets the shortest note: each bar mixes short notes, held notes and occasional rests of up to one beat. The bars follow a pattern: bar one states an idea and bar two answers it, later bars bring those back with the same rhythm and contour moved to fit the new chord, and the last bar leads to one long final note, which is the scale's home note when it belongs to the last chord and that chord's root otherwise.
 
 The piano roll shows C4 through C6, with out-of-scale rows shaded. Click a note to select and hear it. Drag its body to move its pitch and start time; drag the right edge to change duration. Double-click empty space to add a note; Delete or Backspace removes the selection. Edits snap to Timing and stay within the phrase. Out-of-scale pitches are allowed, but overlapping notes are rejected to keep the melody monophonic. Gaps are rests. Use the scrollbars or mouse wheel to scroll; Shift+wheel scrolls horizontally. The window is resizable, and the playhead follows longer phrases horizontally.
 
 Click **Play** to hear the melody; the button becomes **Stop**. Toggle **With chords** for quiet backing chords: backing fades in or out while the melody and playhead keep going, aligned to the current bar. Its setting also applies to the next playback. Enable **Loop** to repeat the whole phrase. Both options start off and can be used independently. Editing, a new suggestion, tab switching, and changing Loop stop playback with a short fade. Clicking a note auditions its pitch; chord previews replace melody playback.
+
+Drag the **Drag to your DAW** handle (next to **New suggestion**) onto an instrument track in your DAW to copy the melody there as a MIDI clip, including any edits made in the piano roll. With **With chords** on, the chords are included under the melody. The clip has no tempo of its own, so it follows the song's tempo. The code is in `Source/MidiDragOut.h`.
 
 Confirming another chord, changing the scale or bar count, or choosing **Reset progression** clears the phrase. Reset starts a fresh progression from the current chord. Changing Timing affects snapping and future suggestions without rewriting existing notes. New suggestion replaces manual edits. History survives tab switches but resets when the plugin editor is reopened.
 
@@ -132,6 +137,7 @@ Melody tests also check scale estimates, bar filling, subdivisions, editing cons
 - `CMakeLists.txt`: the build settings (plugin name, formats, MIDI options).
 - `Source/ChordEngine.h`: the chord logic. Plain C++ with no JUCE, so it can be tested on its own. The `dataWeight` setting in `suggest` controls the mix: 0 is theory only, 1 is data only.
 - `Source/ChordTransitions.h`: how often each chord follows each other chord in real songs. Generated, so don't edit it by hand.
+- `Source/MidiChordReader.h`: reads a MIDI file or a Studio One Musicloop and finds its first chord.
 - `Source/PluginEditor.*`: the plugin window.
 - `Source/PluginProcessor.*`: notes in and out of the DAW.
 - `tools/build_chord_table.py`: the script that generates `ChordTransitions.h` from the dataset.
@@ -143,6 +149,7 @@ The `build/` folder is generated by CMake and is not kept in Git.
 Everything is in `Source/ChordEngine.h`, in the `chords` namespace.
 
 - `chords::suggest (currentChord, keyRoot)`: the main list. The other chords in the key, safest first.
+- `chords::chordFromNotes (notes, keyRoot, result)`: works out which chord a group of notes makes. Returns `false` if they don't form one.
 - `chords::connectedChords (currentChord, keyRoot)`: the longer list for a "more chords" drop-down. Every chord in the key plus chords from outside the key that real songs do use after the current chord.
 
 Both return a `std::vector<chords::Suggestion>`. The fields you'll want from each one:

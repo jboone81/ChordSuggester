@@ -38,6 +38,59 @@ juce::String noteNames (const std::array<int, 3>& notes, bool useFlats)
     return result;
 }
 
+// What the "Explain why" pop-up shows: a title, then a few short points with bullets.
+class ExplanationPanel final : public juce::Component
+{
+public:
+    explicit ExplanationPanel (const chords::Explanation& explanation)
+    {
+        const auto makeLayout = [] (const std::string& text, juce::Font font, juce::Colour colour, float width)
+        {
+            juce::AttributedString string;
+            string.setJustification (juce::Justification::topLeft);
+            string.setWordWrap (juce::AttributedString::byWord);
+            string.append (juce::String::fromUTF8 (text.c_str()), font, colour);
+            juce::TextLayout layout;
+            layout.createLayout (string, width);
+            return layout;
+        };
+
+        title = makeLayout (explanation.title, juce::Font (juce::FontOptions (17.0f).withStyle ("Bold")),
+                            juce::Colours::white, textWidth);
+        float height = padding + title.getHeight() + gap;
+
+        for (const auto& point : explanation.points)
+        {
+            points.push_back (makeLayout (point, juce::Font (juce::FontOptions (14.5f)),
+                                          juce::Colour (0xffe5e8ee), textWidth - bulletIndent));
+            height += points.back().getHeight() + gap;
+        }
+
+        // The panel is as tall as its text needs.
+        setSize ((int) (textWidth + padding * 2.0f), (int) std::ceil (height - gap + padding));
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        float y = padding;
+        title.draw (g, { padding, y, textWidth, title.getHeight() });
+        y += title.getHeight() + gap;
+
+        for (const auto& point : points)
+        {
+            g.setColour (juce::Colour (0xff7aa2ff));
+            g.fillEllipse (padding + 2.0f, y + 6.0f, 5.0f, 5.0f);
+            point.draw (g, { padding + bulletIndent, y, textWidth - bulletIndent, point.getHeight() });
+            y += point.getHeight() + gap;
+        }
+    }
+
+private:
+    static constexpr float padding = 14.0f, gap = 10.0f, textWidth = 340.0f, bulletIndent = 16.0f;
+    juce::TextLayout title;
+    std::vector<juce::TextLayout> points;
+};
+
 const char* safetyDescription (float safety)
 {
     if (safety >= 0.8f) return "Safest";
@@ -183,6 +236,32 @@ void ChordMidiKeyboard::drawBlackNote (int midiNoteNumber, juce::Graphics& g,
 
 
 
+void RoundedKeySelectorLookAndFeel::drawComboBox (juce::Graphics& g, int width, int height,
+                                                   bool isButtonDown, int buttonX, int buttonY,
+                                                   int buttonW, int buttonH, juce::ComboBox& box)
+{
+    juce::ignoreUnused (buttonX, buttonY, buttonW, buttonH);
+
+    const auto bounds = juce::Rectangle<float> (0.5f, 0.5f,
+                                                 (float) width - 1.0f, (float) height - 1.0f);
+    const float cornerRadius = (float) height * 0.42f;
+    g.setColour (box.findColour (juce::ComboBox::backgroundColourId)
+                     .interpolatedWith (juce::Colour (0xff252a34), isButtonDown ? 0.8f : 0.0f));
+    g.fillRoundedRectangle (bounds, cornerRadius);
+    g.setColour (box.findColour (juce::ComboBox::outlineColourId));
+    g.drawRoundedRectangle (bounds, cornerRadius, 1.3f);
+
+    const auto centreX = (float) width - (float) height * 0.62f;
+    const auto centreY = (float) height * 0.5f;
+    juce::Path arrow;
+    arrow.startNewSubPath (centreX - 4.0f, centreY - 1.5f);
+    arrow.lineTo (centreX, centreY + 2.5f);
+    arrow.lineTo (centreX + 4.0f, centreY - 1.5f);
+    g.setColour (box.findColour (juce::ComboBox::arrowColourId));
+    g.strokePath (arrow, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved,
+                                                juce::PathStrokeType::rounded));
+}
+
 //==============================================================================
 ChordSuggesterAudioProcessorEditor::ChordSuggesterAudioProcessorEditor (ChordSuggesterAudioProcessor& p)
     : AudioProcessorEditor (&p), audioProcessor (p), midiKeyboard (p.getMidiKeyboardState())
@@ -199,6 +278,7 @@ ChordSuggesterAudioProcessorEditor::ChordSuggesterAudioProcessorEditor (ChordSug
 
     keySelector.setSelectedId (keyRoot + 1, juce::dontSendNotification);
     keySelector.setJustificationType (juce::Justification::centred);
+    keySelector.setLookAndFeel (&keySelectorLookAndFeel);
     keySelector.setColour (juce::ComboBox::backgroundColourId, headerColour);
     keySelector.setColour (juce::ComboBox::textColourId, juce::Colour (0xfff1f3f6));
     keySelector.setColour (juce::ComboBox::outlineColourId, juce::Colour (0xff394150));
@@ -206,11 +286,21 @@ ChordSuggesterAudioProcessorEditor::ChordSuggesterAudioProcessorEditor (ChordSug
     keySelector.onChange = [this] { updateKeySelection(); };
     addAndMakeVisible (keySelector);
 
+    moreChords.setComponentID ("moreChords");
+    moreChords.setTextWhenNothingSelected (juce::String::fromUTF8 ("More chords\xe2\x80\xa6"));
+    moreChords.setColour (juce::ComboBox::backgroundColourId, headerColour);
+    moreChords.setColour (juce::ComboBox::textColourId, juce::Colour (0xfff1f3f6));
+    moreChords.setColour (juce::ComboBox::outlineColourId, juce::Colour (0xff394150));
+    moreChords.setColour (juce::ComboBox::arrowColourId, juce::Colour (0xfff1f3f6));
+    moreChords.onChange = [this] { chooseMoreChord(); };
+    addAndMakeVisible (moreChords);
+    updateMoreChords();
+
     addAndMakeVisible (midiKeyboard);
 
     addAndMakeVisible (chordsTab);
     addAndMakeVisible (melodyTab);
-    for (auto* button : { &generateButton, &playButton, &backingButton, &loopButton, &resetButton })
+    for (auto* button : { &generateButton, &playButton, &backingButton, &loopButton, &resetButton, &clearNotesButton })
     {
         addAndMakeVisible (*button);
         button->setColour (juce::TextButton::buttonColourId, juce::Colour (0xff20252d));
@@ -227,6 +317,14 @@ ChordSuggesterAudioProcessorEditor::ChordSuggesterAudioProcessorEditor (ChordSug
     timingChoice.setComponentID ("timing");
     addAndMakeVisible (progressionDisplay);
     addAndMakeVisible (pianoRoll);
+
+    // Dragging this handle writes the melody (plus the chords, if "With chords" is on)
+    // to a MIDI file and hands it to the DAW.
+    addAndMakeVisible (melodyDragHandle);
+    melodyDragHandle.createFile = [this]
+    {
+        return midi_writer::writePhraseToTempFile (phrase, backingButton.getToggleState());
+    };
     progressionDisplay.setMultiLine (false);
     progressionDisplay.setReadOnly (true);
     progressionDisplay.setColour (juce::TextEditor::backgroundColourId, juce::Colour (0xff20252d));
@@ -237,7 +335,7 @@ ChordSuggesterAudioProcessorEditor::ChordSuggesterAudioProcessorEditor (ChordSug
             scaleChoice.addItem (melody::Scale { root, mode == 1 }.name(), 2 + mode * 12 + root);
     scaleChoice.setSelectedId (1, juce::dontSendNotification);
     scaleChoice.onChange = [this] { invalidatePhrase(); repaint(); };
-    for (int bars : { 1, 2, 4, 8 }) barsChoice.addItem (juce::String (bars), bars);
+    for (int bars : { 1, 2, 3, 4 }) barsChoice.addItem (juce::String (bars), bars);
     barsChoice.setSelectedId (4, juce::dontSendNotification);
     barsChoice.onChange = [this] { invalidatePhrase(); repaint(); };
     timingChoice.addItem ("1/4 notes", 1);
@@ -281,7 +379,25 @@ ChordSuggesterAudioProcessorEditor::ChordSuggesterAudioProcessorEditor (ChordSug
         playButton.setEnabled (! phrase.notes.empty());
     };
     pianoRoll.onAudition = [this] (int midi) { stopMelody(); audioProcessor.previewNote (midi); };
+    // Empties the grid so the user can draw a melody from scratch.
+    clearNotesButton.onClick = [this]
+    {
+        stopMelody();
+        phrase.notes.clear();
+        pianoRoll.refresh();
+        playButton.setEnabled (false);
+        repaint();
+    };
     resetButton.onClick = [this] { progression.reset (currentChord); refreshMelody(); };
+    for (auto* button : { &undoChordButton, &resetChordsButton, &playProgressionButton })
+    {
+        addAndMakeVisible (*button);
+        button->setColour (juce::TextButton::buttonColourId, juce::Colour (0xff20252d));
+    }
+    undoChordButton.onClick = [this] { undoLastChord(); };
+    playProgressionButton.setColour (juce::TextButton::buttonColourId, accentBlue);
+    playProgressionButton.onClick = [this] { toggleProgressionPlayback(); };
+    resetChordsButton.onClick = [this] { progression.reset (currentChord); refreshMelody(); };
     refreshMelody();
     switchTab (false);
     startTimerHz (30);
@@ -295,6 +411,12 @@ ChordSuggesterAudioProcessorEditor::ChordSuggesterAudioProcessorEditor (ChordSug
 
 ChordSuggesterAudioProcessorEditor::~ChordSuggesterAudioProcessorEditor()
 {
+    if (explanationBox != nullptr)
+    {
+        explanationBox->exitModalState (0);
+        explanationBox->setVisible (false);
+    }
+    keySelector.setLookAndFeel (nullptr);
     audioProcessor.stopPreview();
 }
 
@@ -306,6 +428,7 @@ double ChordSuggesterAudioProcessorEditor::gridSize() const
 
 void ChordSuggesterAudioProcessorEditor::stopMelody()
 {
+    endProgressionPlayback (false);
     audioProcessor.stopPreview();
     melodyPlaying = seenPlayhead = false;
     pianoRoll.setPlayhead (-1);
@@ -314,6 +437,20 @@ void ChordSuggesterAudioProcessorEditor::stopMelody()
 
 void ChordSuggesterAudioProcessorEditor::timerCallback()
 {
+    // Follow the progression playback: highlight the chord that's sounding and show it on the keyboard.
+    if (progressionPlaying)
+    {
+        const auto step = (size_t) ((juce::Time::getMillisecondCounter() - progressionStartedAt) / 1000);
+        if (step >= progressionCount)
+            endProgressionPlayback (false);
+        else if ((int) (progressionFirst + step) != progressionSounding)
+        {
+            progressionSounding = (int) (progressionFirst + step);
+            midiKeyboard.showChordPlayback (progression.all()[(size_t) progressionSounding].notes);
+            repaint (progressionBounds());
+        }
+    }
+
     const double beat = audioProcessor.melodyPlayhead();
     if (melodyPlaying)
     {
@@ -321,21 +458,27 @@ void ChordSuggesterAudioProcessorEditor::timerCallback()
         else if (seenPlayhead) { melodyPlaying = false; playButton.setButtonText ("Play"); }
     }
     pianoRoll.setPlayhead (melodyPlaying ? beat : -1);
+    melodyDragHandle.setEnabled (! phrase.notes.empty());   // nothing to drag until there is a melody
 }
 
 void ChordSuggesterAudioProcessorEditor::switchTab (bool melodyView)
 {
     showingMelody = melodyView;
     keySelector.setVisible (! showingMelody);
+    moreChords.setVisible (! showingMelody);
     midiKeyboard.setVisible (! showingMelody);
+    undoChordButton.setVisible (! showingMelody);
+    resetChordsButton.setVisible (! showingMelody);
+    playProgressionButton.setVisible (! showingMelody);
     stopMelody();
     hoveredRow = -1;
     chordsTab.setToggleState (! showingMelody, juce::dontSendNotification);
     melodyTab.setToggleState (showingMelody, juce::dontSendNotification);
-    for (auto* button : { &generateButton, &playButton, &backingButton, &loopButton, &resetButton }) button->setVisible (showingMelody);
+    for (auto* button : { &generateButton, &playButton, &backingButton, &loopButton, &resetButton, &clearNotesButton }) button->setVisible (showingMelody);
     for (auto* box : { &scaleChoice, &barsChoice, &timingChoice }) box->setVisible (showingMelody);
     progressionDisplay.setVisible (showingMelody);
     pianoRoll.setVisible (showingMelody);
+    melodyDragHandle.setVisible (showingMelody);
     setMouseCursor (juce::MouseCursor::NormalCursor);
     repaint();
 }
@@ -366,7 +509,61 @@ void ChordSuggesterAudioProcessorEditor::refreshMelody (bool stopPlayback)
         text += juce::String (chord.name);
     }
     progressionDisplay.setText (text, false);
+    undoChordButton.setEnabled (progression.all().size() > 1);
+    resetChordsButton.setEnabled (progression.all().size() > 1);
     repaint();
+}
+
+void ChordSuggesterAudioProcessorEditor::toggleProgressionPlayback()
+{
+    if (progressionPlaying)
+    {
+        endProgressionPlayback (true);
+        return;
+    }
+
+    const auto& all = progression.all();
+    progressionCount = (size_t) audioProcessor.previewProgression (all);
+    progressionFirst = all.size() - progressionCount;
+    progressionStartedAt = juce::Time::getMillisecondCounter();
+    progressionPlaying = progressionCount > 0;
+    progressionSounding = -1;
+    playProgressionButton.setButtonText ("Stop");
+}
+
+void ChordSuggesterAudioProcessorEditor::endProgressionPlayback (bool stopAudio)
+{
+    if (! progressionPlaying)
+        return;
+
+    progressionPlaying = false;
+    progressionSounding = -1;
+    playProgressionButton.setButtonText ("Play");
+    if (stopAudio)
+        audioProcessor.stopPreview();
+    repaint();
+}
+
+void ChordSuggesterAudioProcessorEditor::confirmChord (const chords::Chord& chord)
+{
+    setCurrentChord (chord);
+    progression.confirm (currentChord);
+    refreshMelody (false);
+}
+
+bool ChordSuggesterAudioProcessorEditor::isChordDropTarget (juce::Point<int> position) const
+{
+    return currentChordBounds().contains (position) || progressionBounds().contains (position);
+}
+
+void ChordSuggesterAudioProcessorEditor::undoLastChord()
+{
+    if (! progression.removeLast())
+        return;
+
+    // Step back: the chord before the removed one becomes the chord you have again.
+    setCurrentChord (progression.all().back());
+    refreshMelody();
 }
 
 melody::Scale ChordSuggesterAudioProcessorEditor::selectedScale() const
@@ -397,7 +594,7 @@ void ChordSuggesterAudioProcessorEditor::paintMelody (juce::Graphics& g)
                         : "Shaded rows are outside the scale. Drag notes to move them; drag their right edge to resize.",
                 24, getHeight() - 40, getWidth() - 48, 20, juce::Justification::centredLeft);
     g.setColour (juce::Colour (0xffa7afbc));
-    g.drawFittedText ("Double-click to add | Delete to remove | Overlaps rejected | 120 BPM, 4/4 | Shift+wheel scrolls horizontally",
+    g.drawFittedText ("Click or drag to draw | Right-click or Delete removes | Overlaps rejected | 120 BPM, 4/4 | Shift+wheel scrolls horizontally",
                       410, getHeight() - 84, getWidth() - 435, 38, juce::Justification::centredLeft, 2);
 }
 
@@ -409,8 +606,83 @@ void ChordSuggesterAudioProcessorEditor::setCurrentChord (const chords::Chord& n
 
     currentChord = chosen;
     previewedChord.reset();
+    dropMessage.clear();
     suggestions = chords::suggest (currentChord, keyRoot);
+    updateMoreChords();
     repaint();
+}
+
+void ChordSuggesterAudioProcessorEditor::updateMoreChords()
+{
+    moreChords.clear (juce::dontSendNotification);
+    moreChordOptions.clear();
+
+    const auto alreadyShown = [this] (const chords::Chord& chord)
+    {
+        if (chords::sameNotes (chord, currentChord))
+            return true;
+        for (const auto& option : moreChordOptions)
+            if (chords::sameNotes (option, chord))
+                return true;
+        return std::any_of (suggestions.begin(), suggestions.end(),
+                            [&chord] (const chords::Suggestion& s) { return chords::sameNotes (s.chord, chord); });
+    };
+
+    const auto add = [this] (const chords::Chord& chord, const juce::String& label)
+    {
+        moreChordOptions.push_back (chord);
+        moreChords.addItem (label, (int) moreChordOptions.size());
+    };
+
+    // Chords from outside the key that real songs do play after this one, most common first.
+    auto common = chords::connectedChords (currentChord, keyRoot);
+    std::stable_sort (common.begin(), common.end(), [] (const chords::Suggestion& a, const chords::Suggestion& b)
+                      { return a.chance > b.chance; });
+
+    bool headingAdded = false;
+    for (const auto& s : common)
+    {
+        if (alreadyShown (s.chord))
+            continue;
+        if (! headingAdded)
+        {
+            moreChords.addSectionHeading ("Common next in real songs");
+            headingAdded = true;
+        }
+        const int percent = juce::roundToInt (s.chance * 100.0f);
+        add (s.chord, juce::String (s.chord.fullName) + "  (" + (percent < 1 ? juce::String ("<1") : juce::String (percent)) + "%)");
+    }
+
+    // Everything else: every major, minor and diminished chord, starting from the key note.
+    headingAdded = false;
+    for (int state = 0; state < chords::data::numStates; ++state)
+    {
+        const auto chord = chords::chordFromDataState (state, keyRoot);
+        if (alreadyShown (chord))
+            continue;
+        if (! headingAdded)
+        {
+            moreChords.addSectionHeading ("All other chords");
+            headingAdded = true;
+        }
+        add (chord, chord.fullName);
+    }
+}
+
+void ChordSuggesterAudioProcessorEditor::chooseMoreChord()
+{
+    const int id = moreChords.getSelectedId();
+    if (id < 1 || id > (int) moreChordOptions.size())
+        return;
+
+    // Copy first: setCurrentChord rebuilds moreChordOptions.
+    const chords::Chord chosen = moreChordOptions[(size_t) id - 1];
+    midiKeyboard.showChordPlayback (chosen.notes);
+    endProgressionPlayback (false);
+    audioProcessor.previewChord (chosen);
+    setCurrentChord (chosen);
+    progression.confirm (currentChord);
+    refreshMelody (false);
 }
 
 void ChordSuggesterAudioProcessorEditor::updateKeySelection()
@@ -422,6 +694,7 @@ void ChordSuggesterAudioProcessorEditor::updateKeySelection()
     keyRoot = selectedId - 1;
     suggestions = chords::suggest (currentChord, keyRoot);
     previewedChord.reset();
+    updateMoreChords();
     repaint();
 }
 
@@ -435,10 +708,121 @@ juce::Rectangle<int> ChordSuggesterAudioProcessorEditor::transitionBounds() cons
     return { 24, 294, leftColumnWidth - 48, 96 };
 }
 
+juce::Rectangle<int> ChordSuggesterAudioProcessorEditor::progressionBounds() const
+{
+    return { 24, 440, leftColumnWidth - 48, getHeight() - 112 - 30 - 66 - 440 };
+}
+
+void ChordSuggesterAudioProcessorEditor::paintProgression (juce::Graphics& g)
+{
+    const auto area = progressionBounds();
+    g.setColour (secondaryText);
+    g.setFont (juce::FontOptions (17.0f).withStyle ("Bold"));
+    g.drawText ("Your progression", area.getX(), area.getY() - 30, area.getWidth(), 24,
+                juce::Justification::centredLeft);
+
+    // The small "Explain why" tag: explains what the Roman numerals on the chips mean.
+    const auto helpTag = numeralsHelpBounds().toFloat();
+    g.setColour (juce::Colours::white.withAlpha (hoveredNumeralsHelp ? 0.22f : 0.10f));
+    g.fillRoundedRectangle (helpTag, 6.0f);
+    g.setColour (juce::Colours::white.withAlpha (0.35f));
+    g.drawRoundedRectangle (helpTag.reduced (0.5f), 6.0f, 1.0f);
+    g.setColour (juce::Colour (0xfff1f3f6));
+    g.setFont (juce::FontOptions (12.0f).withStyle ("Bold"));
+    g.drawText ("Explain why", helpTag, juce::Justification::centred);
+
+    g.setColour (panelColour);
+    g.fillRoundedRectangle (area.toFloat(), 12.0f);
+    g.setColour (juce::Colour (0xff353d4b));
+    g.drawRoundedRectangle (area.toFloat(), 12.0f, 1.0f);
+
+    // Chords as chips with arrows between, wrapping onto new lines. If they don't all
+    // fit, the oldest are left out and a "..." chip stands in for them.
+    const juce::Font chipFont (juce::FontOptions (15.0f).withStyle ("Bold"));
+    // Each chip also shows the chord's Roman numeral in the chosen key (I, ii, V...), in a
+    // lighter style after the name. It follows the Key menu, so it updates when the key changes.
+    const juce::Font numeralFont (juce::FontOptions (13.0f));
+    const int numeralGap = 7;
+    const auto& all = progression.all();
+    const auto inner = area.reduced (12, 10);
+    const int chipHeight = 28, lineGap = 8, arrowWidth = 20;
+    const auto ellipsis = juce::String::fromUTF8 ("\xe2\x80\xa6");
+
+    struct Chip { juce::String text, numeral; juce::Rectangle<int> bounds; bool current; int index; };
+    const auto layout = [&] (size_t first, std::vector<Chip>& chips)
+    {
+        chips.clear();
+        int x = inner.getX(), y = inner.getY();
+        struct Item { juce::String text, numeral; bool current; int index; };
+        std::vector<Item> items;
+        if (first > 0) items.push_back ({ ellipsis, {}, false, -1 });
+        for (size_t i = first; i < all.size(); ++i)
+            items.push_back ({ juce::String (all[i].name),
+                               juce::String::fromUTF8 (chords::romanNumeral (all[i], keyRoot).c_str()),
+                               i + 1 == all.size(), (int) i });
+
+        for (size_t i = 0; i < items.size(); ++i)
+        {
+            int width = juce::roundToInt (juce::GlyphArrangement::getStringWidth (chipFont, items[i].text)) + 22;
+            if (items[i].numeral.isNotEmpty())
+                width += numeralGap + juce::roundToInt (juce::GlyphArrangement::getStringWidth (numeralFont, items[i].numeral));
+            if (x > inner.getX() && x + width > inner.getRight())
+            {
+                x = inner.getX();
+                y += chipHeight + lineGap;
+            }
+            chips.push_back ({ items[i].text, items[i].numeral, { x, y, width, chipHeight }, items[i].current, items[i].index });
+            x += width + arrowWidth;
+        }
+        return chips.empty() || chips.back().bounds.getBottom() <= inner.getBottom();
+    };
+
+    std::vector<Chip> chips;
+    for (size_t first = 0; first < all.size() && ! layout (first, chips); ++first) {}
+
+    g.setFont (chipFont);
+    for (size_t i = 0; i < chips.size(); ++i)
+    {
+        const auto& chip = chips[i];
+        g.setColour (chip.current ? accentBlue : juce::Colour (0xff2b3240));
+        g.fillRoundedRectangle (chip.bounds.toFloat(), 8.0f);
+        if (chip.index >= 0 && chip.index == progressionSounding)
+        {
+            g.setColour (juce::Colour (0xfff8cc6a));   // the same gold as the melody playhead
+            g.drawRoundedRectangle (chip.bounds.toFloat().reduced (1.0f), 8.0f, 2.5f);
+        }
+        g.setColour (juce::Colour (0xfff1f3f6));
+        if (chip.numeral.isEmpty())
+        {
+            g.drawText (chip.text, chip.bounds, juce::Justification::centred);
+        }
+        else
+        {
+            // Chord name on the left, its Roman numeral after it in a lighter style.
+            const auto textArea = chip.bounds.reduced (11, 0);
+            g.setFont (chipFont);
+            g.drawText (chip.text, textArea, juce::Justification::centredLeft);
+            g.setColour (juce::Colour (0xfff1f3f6).withAlpha (chip.current ? 0.85f : 0.62f));
+            g.setFont (numeralFont);
+            g.drawText (chip.numeral, textArea, juce::Justification::centredRight);
+            g.setFont (chipFont);
+        }
+
+        // Arrow to the next chip when it's on the same line.
+        if (i + 1 < chips.size() && chips[i + 1].bounds.getY() == chip.bounds.getY())
+        {
+            g.setColour (secondaryText);
+            g.drawText (juce::String::fromUTF8 ("\xe2\x86\x92"), chip.bounds.getRight(), chip.bounds.getY(),
+                        arrowWidth, chipHeight, juce::Justification::centred);
+        }
+    }
+}
+
 void ChordSuggesterAudioProcessorEditor::updateCursor (juce::Point<int> position)
 {
     if (showingMelody) return;
     const bool clickable = rowAt (position) >= 0 || currentChordBounds().contains (position)
+        || numeralsHelpBounds().contains (position)
         || (previewedChord.has_value() && transitionBounds().contains (position));
     setMouseCursor (clickable ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
 }
@@ -461,6 +845,55 @@ int ChordSuggesterAudioProcessorEditor::rowAt (juce::Point<int> position) const
             return i;
 
     return -1;
+}
+
+juce::Rectangle<int> ChordSuggesterAudioProcessorEditor::explainButtonBounds (int index) const
+{
+    const auto row = rowBounds (index);
+    const int width = 104, height = 22;
+
+    // Under the chord's notes when the row is tall enough for a third line...
+    if (row.getHeight() >= 82)
+        return { row.getX() + 116, row.getY() + 55, width, height };
+
+    // ...otherwise (a short window) beside them, just left of the Safe/Dramatic label.
+    return { row.getRight() - 124 - width, row.getCentreY() - height / 2, width, height };
+}
+
+int ChordSuggesterAudioProcessorEditor::explainButtonAt (juce::Point<int> position) const
+{
+    for (int i = 0; i < (int) suggestions.size(); ++i)
+        if (explainButtonBounds (i).contains (position))
+            return i;
+
+    return -1;
+}
+
+void ChordSuggesterAudioProcessorEditor::showExplanation (int index)
+{
+    if (index < 0 || index >= (int) suggestions.size())
+        return;
+
+    // The wording comes from chords::explain in ChordExplain.h. The pop-up points at the
+    // button, closes when the user clicks anywhere else, and deletes itself.
+    auto panel = std::make_unique<ExplanationPanel> (chords::explain (currentChord, suggestions[(size_t) index].chord, keyRoot));
+    explanationBox = &juce::CallOutBox::launchAsynchronously (std::move (panel), explainButtonBounds (index), this);
+}
+
+juce::Rectangle<int> ChordSuggesterAudioProcessorEditor::numeralsHelpBounds() const
+{
+    // Just to the right of the "Your progression" heading.
+    const auto area = progressionBounds();
+    const juce::Font headingFont (juce::FontOptions (17.0f).withStyle ("Bold"));
+    const int headingWidth = juce::roundToInt (juce::GlyphArrangement::getStringWidth (headingFont, "Your progression"));
+    return { area.getX() + headingWidth + 12, area.getY() - 28, 86, 20 };
+}
+
+void ChordSuggesterAudioProcessorEditor::showNumeralsHelp()
+{
+    // The wording comes from chords::explainRomanNumerals in ChordExplain.h, using the chosen key for its examples.
+    auto panel = std::make_unique<ExplanationPanel> (chords::explainRomanNumerals (keyRoot));
+    explanationBox = &juce::CallOutBox::launchAsynchronously (std::move (panel), numeralsHelpBounds(), this);
 }
 
 //==============================================================================
@@ -497,10 +930,10 @@ void ChordSuggesterAudioProcessorEditor::paint (juce::Graphics& g)
                 juce::Justification::centredLeft);
 
     const auto current = currentChordBounds();
-    g.setColour (juce::Colour (0xff222630));
+    g.setColour (midiDragHovering ? juce::Colour (0xff253348) : juce::Colour (0xff222630));
     g.fillRoundedRectangle (current.toFloat(), 13.0f);
-    g.setColour (juce::Colour (0xff444c5c));
-    g.drawRoundedRectangle (current.toFloat(), 13.0f, 1.5f);
+    g.setColour (midiDragHovering ? accentBlue : juce::Colour (0xff444c5c));
+    g.drawRoundedRectangle (current.toFloat(), 13.0f, midiDragHovering ? 2.5f : 1.5f);
     g.setColour (juce::Colour (0xfff1f3f6));
     g.setFont (juce::FontOptions (44.0f).withStyle ("Bold"));
     g.drawText (currentChord.name, current.withTrimmedTop (28).withHeight (56),
@@ -510,7 +943,10 @@ void ChordSuggesterAudioProcessorEditor::paint (juce::Graphics& g)
                 juce::Justification::centred);
     g.setColour (secondaryText);
     g.setFont (juce::FontOptions (14.0f));
-    g.drawText ("Click to replay", current.withTrimmedTop (120).withHeight (22),
+    const auto currentChordHint = midiDragHovering ? juce::String ("Drop to use this clip's first chord")
+                                : dropMessage.isNotEmpty() ? dropMessage
+                                : juce::String::fromUTF8 ("Click to replay \xc2\xb7 or drop a MIDI clip here");
+    g.drawText (currentChordHint, current.withTrimmedTop (120).withHeight (22).reduced (10, 0),
                 juce::Justification::centred);
 
     const auto transition = transitionBounds();
@@ -535,6 +971,8 @@ void ChordSuggesterAudioProcessorEditor::paint (juce::Graphics& g)
     g.drawText (previewedChord ? "Click to hear the transition" : "Preview a recommendation first",
                 transition.getX(), transition.getY() + 69, transition.getWidth(), 22,
                 juce::Justification::centred);
+
+    paintProgression (g);
 
     const auto keyboardArea = juce::Rectangle<int> (24, getHeight() - 112, leftColumnWidth - 48, 88);
     g.setColour (secondaryText);
@@ -579,26 +1017,24 @@ void ChordSuggesterAudioProcessorEditor::paint (juce::Graphics& g)
         g.drawText (details, detailsX, row.getY() + 31, detailsWidth, 20,
                     juce::Justification::centredLeft);
 
-        const int playDiameter = juce::jmin (42, row.getHeight() - 12);
-        const auto playButton = juce::Rectangle<float> ((float) (row.getRight() - playDiameter - 16),
-                                                         row.toFloat().getCentreY() - playDiameter * 0.5f,
-                                                         (float) playDiameter, (float) playDiameter);
-        g.setColour (juce::Colour (0x332f3b50));
-        g.fillEllipse (playButton);
+        // The "Explain why" button. Clicking it is handled in mouseDown.
+        const auto explainButton = explainButtonBounds (i).toFloat();
+        g.setColour (juce::Colours::white.withAlpha (i == hoveredExplain ? 0.32f : 0.16f));
+        g.fillRoundedRectangle (explainButton, 6.0f);
+        g.setColour (juce::Colours::white.withAlpha (0.45f));
+        g.drawRoundedRectangle (explainButton.reduced (0.5f), 6.0f, 1.0f);
         g.setColour (juce::Colours::white);
+        g.setFont (juce::FontOptions (13.0f).withStyle ("Bold"));
+        g.drawText ("Explain why", explainButton, juce::Justification::centred);
+
         g.setFont (juce::FontOptions (15.0f).withStyle ("Bold"));
-        g.drawText (safetyDescription (suggestion.safety), row.getRight() - 144, row.getY(),
+        g.drawText (safetyDescription (suggestion.safety), row.getRight() - 112, row.getY(),
                     92, row.getHeight(), juce::Justification::centredRight);
-        juce::Path playIcon;
-        playIcon.addTriangle (playButton.getCentreX() - 3.0f, playButton.getCentreY() - 7.0f,
-                              playButton.getCentreX() - 3.0f, playButton.getCentreY() + 7.0f,
-                              playButton.getCentreX() + 8.0f, playButton.getCentreY());
-        g.fillPath (playIcon);
     }
 
     g.setColour (secondaryText);
     g.setFont (juce::FontOptions (12.5f));
-    g.drawText (juce::String::fromUTF8 ("Click to preview \xc2\xb7 Double-click to select"),
+    g.drawText (juce::String::fromUTF8 ("Click to preview \xc2\xb7 Double-click or drag to Your chord to select"),
                 leftColumnWidth + 28, getHeight() - 76, getWidth() - leftColumnWidth - 52, 20,
                 juce::Justification::centred);
 
@@ -619,11 +1055,41 @@ void ChordSuggesterAudioProcessorEditor::paint (juce::Graphics& g)
     g.setColour (secondaryText);
     g.drawText ("Dramatic", legendX + legendWidth + 8, legendY - 5, 72, 22,
                 juce::Justification::centredLeft);
+
+    // While a suggestion is being dragged: outline where it can be dropped, and draw it under the mouse.
+    if (draggingChord && dragRow >= 0 && dragRow < (int) suggestions.size())
+    {
+        const bool overTarget = isChordDropTarget (dragPosition);
+        for (const auto target : { currentChordBounds(), progressionBounds() })
+        {
+            const bool hovered = target.contains (dragPosition);
+            g.setColour (accentBlue.withAlpha (hovered ? 0.22f : 0.08f));
+            g.fillRoundedRectangle (target.toFloat(), 12.0f);
+            g.setColour (accentBlue.withAlpha (hovered ? 1.0f : 0.6f));
+            g.drawRoundedRectangle (target.toFloat().reduced (1.0f), 12.0f, hovered ? 3.0f : 2.0f);
+        }
+
+        const auto& dragged = suggestions[(size_t) dragRow];
+        const auto ghost = juce::Rectangle<float> (110.0f, 48.0f).withCentre (dragPosition.toFloat());
+        g.setColour (dramaticGray.interpolatedWith (accentBlue, dragged.safety).withAlpha (0.92f));
+        g.fillRoundedRectangle (ghost, 10.0f);
+        g.setColour (juce::Colours::white.withAlpha (overTarget ? 1.0f : 0.5f));
+        g.drawRoundedRectangle (ghost, 10.0f, 1.5f);
+        g.setFont (juce::FontOptions (22.0f).withStyle ("Bold"));
+        g.drawText (dragged.chord.name, ghost.toNearestInt(), juce::Justification::centred);
+    }
 }
 
 void ChordSuggesterAudioProcessorEditor::resized()
 {
     keySelector.setBounds (getWidth() - 200, 22, 176, 32);
+    moreChords.setBounds (getWidth() - 264, 76, 240, 32);
+    const auto progressionArea = progressionBounds();
+    const int thirdWidth = (progressionArea.getWidth() - 16) / 3;
+    const int buttonY = progressionArea.getBottom() + 10;
+    playProgressionButton.setBounds (progressionArea.getX(), buttonY, thirdWidth, 32);
+    undoChordButton.setBounds (progressionArea.getX() + thirdWidth + 8, buttonY, thirdWidth, 32);
+    resetChordsButton.setBounds (progressionArea.getRight() - thirdWidth, buttonY, thirdWidth, 32);
     const auto keyboardArea = juce::Rectangle<int> (24, getHeight() - 112, leftColumnWidth - 48, 88);
     midiKeyboard.setBounds (keyboardArea.reduced (1));
     midiKeyboard.setKeyWidth (float (midiKeyboard.getWidth()) / 7.0f);
@@ -631,6 +1097,8 @@ void ChordSuggesterAudioProcessorEditor::resized()
     melodyTab.setBounds (400, 16, 110, 40);
     scaleChoice.setBounds (getWidth() - 285, 22, 261, 32);
     generateButton.setBounds (200, 86, 180, 36);
+    melodyDragHandle.setBounds (392, 86, 172, 36);
+    clearNotesButton.setBounds (576, 86, 130, 36);
     barsChoice.setBounds (getWidth() - 325, 86, 85, 36);
     timingChoice.setBounds (getWidth() - 150, 86, 126, 36);
     progressionDisplay.setBounds (24, 150, getWidth() - 250, 26);
@@ -647,23 +1115,42 @@ void ChordSuggesterAudioProcessorEditor::mouseDown (const juce::MouseEvent& even
     if (showingMelody || ! event.mods.isLeftButtonDown() || event.getNumberOfClicks() != 1)
         return;
     const auto position = event.getPosition();
+
+    // "Explain why" opens the explanation and does nothing else (no preview).
+    if (const int explain = explainButtonAt (position); explain >= 0)
+    {
+        showExplanation (explain);
+        return;
+    }
+    if (numeralsHelpBounds().contains (position))
+    {
+        showNumeralsHelp();
+        return;
+    }
+
     const int row = rowAt (position);
+
+    dragRow = row;   // pressing on a suggestion can also start dragging it
+    draggingChord = false;
 
     if (row >= 0)
     {
         previewedChord = suggestions[(size_t) row].chord;
         midiKeyboard.showChordPlayback (previewedChord->notes);
+        endProgressionPlayback (false);
         audioProcessor.previewChord (*previewedChord);
         repaint();
     }
     else if (currentChordBounds().contains (position))
     {
         midiKeyboard.showChordPlayback (currentChord.notes);
+        endProgressionPlayback (false);
         audioProcessor.previewChord (currentChord);
     }
     else if (previewedChord && transitionBounds().contains (position))
     {
         midiKeyboard.showTransitionPlayback (currentChord.notes, previewedChord->notes);
+        endProgressionPlayback (false);
         audioProcessor.previewTransition (currentChord, *previewedChord);
     }
     updateCursor (event.getPosition());
@@ -673,25 +1160,63 @@ void ChordSuggesterAudioProcessorEditor::mouseDoubleClick (const juce::MouseEven
 {
     if (showingMelody || ! event.mods.isLeftButtonDown() || event.getNumberOfClicks() != 2)
         return;
+    if (explainButtonAt (event.getPosition()) >= 0)
+        return;   // a double-click on "Explain why" must not select the chord
     const int row = rowAt (event.getPosition());
     if (row >= 0)
-    {
-        setCurrentChord (suggestions[(size_t) row].chord);
-        progression.confirm (currentChord);
-        // Keep the first click's chord preview sounding during confirmation.
-        refreshMelody (false);
-    }
+        confirmChord (suggestions[(size_t) row].chord);   // the first click's preview keeps sounding
+    dragRow = -1;
     updateCursor (event.getPosition());
+}
+
+void ChordSuggesterAudioProcessorEditor::mouseDrag (const juce::MouseEvent& event)
+{
+    if (showingMelody || dragRow < 0)
+        return;
+
+    // Only a real move counts as a drag, so a wobbly click is still a click.
+    if (! draggingChord && event.getDistanceFromDragStart() < 6)
+        return;
+
+    draggingChord = true;
+    dragPosition = event.getPosition();
+    setMouseCursor (juce::MouseCursor::DraggingHandCursor);
+    repaint();
+}
+
+void ChordSuggesterAudioProcessorEditor::mouseUp (const juce::MouseEvent& event)
+{
+    const int row = dragRow;
+    const bool dropped = draggingChord && row >= 0 && row < (int) suggestions.size()
+                         && isChordDropTarget (event.getPosition());
+    dragRow = -1;
+    draggingChord = false;
+
+    if (dropped)
+    {
+        const chords::Chord chosen = suggestions[(size_t) row].chord;
+        confirmChord (chosen);
+        midiKeyboard.showChordPlayback (chosen.notes);
+        endProgressionPlayback (false);
+        audioProcessor.previewChord (chosen);
+    }
+
+    updateCursor (event.getPosition());
+    repaint();
 }
 
 void ChordSuggesterAudioProcessorEditor::mouseMove (const juce::MouseEvent& event)
 {
     const int row = showingMelody ? -1 : rowAt (event.getPosition());
+    const int explain = showingMelody ? -1 : explainButtonAt (event.getPosition());
+    const bool numeralsHelp = ! showingMelody && numeralsHelpBounds().contains (event.getPosition());
     updateCursor (event.getPosition());
 
-    if (row != hoveredRow)
+    if (row != hoveredRow || explain != hoveredExplain || numeralsHelp != hoveredNumeralsHelp)
     {
         hoveredRow = row;
+        hoveredExplain = explain;
+        hoveredNumeralsHelp = numeralsHelp;
         repaint();
     }
 }
@@ -699,9 +1224,112 @@ void ChordSuggesterAudioProcessorEditor::mouseMove (const juce::MouseEvent& even
 void ChordSuggesterAudioProcessorEditor::mouseExit (const juce::MouseEvent&)
 {
     setMouseCursor (juce::MouseCursor::NormalCursor);
-    if (hoveredRow != -1)
+    if (hoveredRow != -1 || hoveredExplain != -1 || hoveredNumeralsHelp)
     {
-        hoveredRow = -1;
+        hoveredRow = hoveredExplain = -1;
+        hoveredNumeralsHelp = false;
         repaint();
     }
+}
+
+//==============================================================================
+// Dropping a MIDI file on the window
+
+namespace
+{
+// MIDI files (.mid) and Studio One Musicloops (.musicloop).
+bool isMidiFile (const juce::String& path)
+{
+    return midi_reader::canRead (juce::File (path));
+}
+
+// The different notes in a group, lowest first, as text with a dot between each one.
+// A note played in more than one octave is only listed once.
+juce::String playedNoteNames (std::vector<int> notes, bool useFlats)
+{
+    std::sort (notes.begin(), notes.end());
+
+    juce::String result;
+    bool listed[12] = {};
+
+    for (int note : notes)
+    {
+        const int pitch = ((note % 12) + 12) % 12;
+        if (listed[pitch])
+            continue;
+
+        listed[pitch] = true;
+
+        if (result.isNotEmpty())
+            result += juce::String::fromUTF8 (" \xc2\xb7 ");
+
+        result += juce::String::fromUTF8 (chords::noteName (pitch, useFlats).c_str());
+    }
+
+    return result;
+}
+}
+
+bool ChordSuggesterAudioProcessorEditor::isInterestedInFileDrag (const juce::StringArray& files)
+{
+    for (const auto& path : files)
+        if (isMidiFile (path))
+            return true;
+
+    return false;
+}
+
+void ChordSuggesterAudioProcessorEditor::fileDragEnter (const juce::StringArray&, int, int)
+{
+    midiDragHovering = true;
+    repaint();
+}
+
+void ChordSuggesterAudioProcessorEditor::fileDragExit (const juce::StringArray&)
+{
+    midiDragHovering = false;
+    repaint();
+}
+
+void ChordSuggesterAudioProcessorEditor::filesDropped (const juce::StringArray& files, int, int)
+{
+    midiDragHovering = false;
+
+    for (const auto& path : files)
+    {
+        if (! isMidiFile (path))
+            continue;
+
+        const juce::File file (path);
+        const std::vector<int> played = midi_reader::firstChordNotes (file);
+        const bool keyUsesFlats = keyRoot == 1 || keyRoot == 3 || keyRoot == 5 || keyRoot == 8 || keyRoot == 10;
+        chords::Chord dropped;
+
+        if (chords::chordFromNotes (played, keyRoot, dropped))
+        {
+            setCurrentChord (dropped);
+
+            // Play it and light up the keyboard, the same as clicking "Your chord".
+            midiKeyboard.showChordPlayback (currentChord.notes);
+            endProgressionPlayback (false);
+            audioProcessor.previewChord (currentChord);
+
+            // Spell the notes to match the chord's name: flats for "Ab minor", sharps for "F# major".
+            const juce::String name (dropped.name);
+            const bool useFlats = name.substring (1, 2) == "b" || (keyUsesFlats && name.substring (1, 2) != "#");
+            dropMessage = "Notes played: " + playedNoteNames (played, useFlats);
+        }
+        else if (played.empty())
+        {
+            dropMessage = "No notes found in " + file.getFileName();
+        }
+        else
+        {
+            dropMessage = "No chord in these notes: " + playedNoteNames (played, keyUsesFlats);
+        }
+
+        break;   // only the first MIDI file is used
+    }
+
+    repaint();
 }

@@ -33,6 +33,8 @@ public:
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     void previewChord (const chords::Chord& chord);
     void previewTransition (const chords::Chord& current, const chords::Chord& next);
+    // Plays the chords in order, one second each. Returns how many will play (the most recent, if there are many).
+    int previewProgression (const std::vector<chords::Chord>& progression);
     void previewPhrase (const melody::Phrase& phrase, bool withChords = false, bool loop = false);
     void setMelodyBackingEnabled (bool enabled);
     void previewNote (int midi);

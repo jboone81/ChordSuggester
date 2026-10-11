@@ -127,6 +127,24 @@ inline int chordType (const Chord& chord)
     return -1;
 }
 
+// The chord's Roman numeral in a major key: which note of the scale it is built on.
+// In C major: C = "I", Dm = "ii", G = "V", Am = "vi", and Bdim = "vii" with a degree sign.
+// Capitals mean a major chord, small letters a minor one, and a degree sign a diminished one.
+// A chord built on a note from outside the scale gets a b or # in front, e.g. Bb = "bVII".
+// The degree sign is stored as UTF-8, so in JUCE read the result with juce::String::fromUTF8.
+inline std::string romanNumeral (const Chord& chord, int keyRoot)
+{
+    static const char* capitals[12] = { "I", "bII", "II", "bIII", "III", "IV", "#IV", "V", "bVI", "VI", "bVII", "VII" };
+    static const char* smalls[12]   = { "i", "bii", "ii", "biii", "iii", "iv", "#iv", "v", "bvi", "vi", "bvii", "vii" };
+
+    const int stepsAboveKeyNote = (((chord.notes[0] - keyRoot) % 12) + 12) % 12;
+    const int type = chordType (chord);
+
+    if (type == 1) return smalls[stepsAboveKeyNote];
+    if (type == 2) return std::string (smalls[stepsAboveKeyNote]) + "\xc2\xb0";
+    return capitals[stepsAboveKeyNote];
+}
+
 // Where to find this chord in the real-song table, or -1 if it isn't a type the table covers.
 inline int dataState (const Chord& chord, int keyRoot)
 {
@@ -166,6 +184,51 @@ inline Chord chordFromDataState (int state, int keyRoot)
     c.fullName = rootName + (type == 0 ? " major" : type == 1 ? " minor" : " diminished");
     c.notes    = { root, (root + (type == 0 ? 4 : 3)) % 12, (root + (type == 2 ? 6 : 7)) % 12 };
     return c;
+}
+
+// Works out which chord a group of notes makes. The notes can be MIDI note numbers
+// (60 = middle C) or plain note numbers 0-11, in any order, with repeats.
+//
+// Returns true and fills in `result` if the notes contain a major, minor or
+// diminished chord. Extra notes such as a 7th are ignored. Returns false if not.
+inline bool chordFromNotes (const std::vector<int>& notes, int keyRoot, Chord& result)
+{
+    if (notes.empty())
+        return false;
+
+    bool present[12] = {};
+    for (int note : notes)
+        present[((note % 12) + 12) % 12] = true;
+
+    const int lowest = *std::min_element (notes.begin(), notes.end());
+    const int bass = ((lowest % 12) + 12) % 12;
+
+    // Try the lowest note as the chord's root first, since that is the usual case,
+    // then every other note. This is what lets C-E-G-A read as C and A-C-E-G as Am.
+    for (int attempt = 0; attempt < 12; ++attempt)
+    {
+        const int root = (bass + attempt) % 12;
+        if (! present[root])
+            continue;
+
+        const bool majorThird = present[(root + 4) % 12];
+        const bool minorThird = present[(root + 3) % 12];
+        const bool fifth      = present[(root + 7) % 12];
+        const bool flatFifth  = present[(root + 6) % 12];
+
+        int type = -1;
+        if (majorThird && fifth)          type = 0;
+        else if (minorThird && fifth)     type = 1;
+        else if (minorThird && flatFifth) type = 2;
+
+        if (type >= 0)
+        {
+            result = chordFromDataState (data::stateOf (root - keyRoot, type), keyRoot);
+            return true;
+        }
+    }
+
+    return false;
 }
 
 // If real songs rarely use a chord, there isn't enough evidence to go on.
