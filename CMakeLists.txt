@@ -17,7 +17,7 @@
        PLUGIN_MANUFACTURER_CODE Chsg
        PLUGIN_CODE Chs1
        FORMATS VST3 Standalone
-       PRODUCT_NAME "ChordSuggester")
+       PRODUCT_NAME "EZ Chords & Harmony")
 
    juce_generate_juce_header(ChordSuggester)
 
