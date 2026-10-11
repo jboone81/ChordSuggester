@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Builds the "which chord usually comes next" table for the ChordSuggester plugin.
+Builds the "which chord usually comes next" table for the EZ Chords & Harmony plugin.
 
 It reads the Hooktheory dataset (Hooktheory.json.gz), counts how often each chord
 is followed by each other chord in real songs, and writes the result to

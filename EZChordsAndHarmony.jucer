@@ -3,7 +3,7 @@
 <JUCERPROJECT id="xS8U2c" name="EZ Chords &amp; Harmony" projectType="audioplug" useAppConfig="0"
               addUsingNamespaceToJuceHeader="0" jucerFormatVersion="1" pluginFormats="buildAU,buildStandalone,buildVST3"
               pluginCharacteristicsValue="pluginProducesMidiOut,pluginWantsMidiIn">
-  <MAINGROUP id="iEc9Sc" name="ChordSuggester">
+  <MAINGROUP id="iEc9Sc" name="EZ Chords &amp; Harmony">
     <GROUP id="{329174CC-1872-9B0F-D301-70FDC842433D}" name="Source">
       <FILE id="r543Zc" name="PluginProcessor.cpp" compile="1" resource="0"
             file="Source/PluginProcessor.cpp"/>

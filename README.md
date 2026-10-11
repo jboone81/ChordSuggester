@@ -1,4 +1,4 @@
-# ChordSuggester
+# EZ Chords & Harmony
 
 An audio plugin that suggests which chord to play next, for people who don't know music theory. You give it a chord, and it lists the other chords in the key, colored from blue (safe) to gray (dramatic).
 
@@ -74,8 +74,8 @@ Then, from the project folder:
 
 ```
 cmake -B build -DCMAKE_BUILD_TYPE=Debug
-cmake --build build --target ChordSuggester_Standalone -j 8
-open build/ChordSuggester_artefacts/Debug/Standalone/ChordSuggester.app
+cmake --build build --target EZChordsAndHarmony_Standalone -j 8
+open "build/EZChordsAndHarmony_artefacts/Debug/Standalone/EZ Chords & Harmony.app"
 ```
 
 ### Linux
@@ -94,8 +94,8 @@ Then, from the project folder:
 
 ```
 cmake -B build -DCMAKE_BUILD_TYPE=Debug
-cmake --build build --target ChordSuggester_Standalone -j 8
-./build/ChordSuggester_artefacts/Debug/Standalone/ChordSuggester
+cmake --build build --target EZChordsAndHarmony_Standalone -j 8
+"./build/EZChordsAndHarmony_artefacts/Debug/Standalone/EZ Chords & Harmony"
 ```
 
 A yellow "Audio input is muted to avoid feedback loop" bar is normal; chord previews still play. Use **Settings...** to pick an audio device.
@@ -111,20 +111,20 @@ Open the **Developer PowerShell for VS 2022** from the Start menu, go to the pro
 
 ```
 cmake -B build -DJUCE_PATH="$env:USERPROFILE\Downloads\JUCE"
-cmake --build build --config Debug --target ChordSuggester_Standalone
-.\build\ChordSuggester_artefacts\Debug\Standalone\ChordSuggester.exe
+cmake --build build --config Debug --target EZChordsAndHarmony_Standalone
+& ".\build\EZChordsAndHarmony_artefacts\Debug\Standalone\EZ Chords & Harmony.exe"
 ```
 
 Change the `JUCE_PATH` value if you put JUCE somewhere other than your Downloads folder. Visual Studio picks the build type at build time, which is why `--config Debug` is on the build command instead of the configure command.
 
-For a local VST3 build without copying into the system plugin folder, configure with `-DCHORDSUGGESTER_COPY_PLUGIN_AFTER_BUILD=OFF`. Installation remains enabled by default.
+For a local VST3 build without copying into the system plugin folder, configure with `-DEZCHORDSANDHARMONY_COPY_PLUGIN_AFTER_BUILD=OFF`. Installation remains enabled by default.
 
 ## Playback tests
 
 Enable the optional tests when configuring, then build and run them:
 
 ```
-cmake -B build -DCHORDSUGGESTER_BUILD_TESTS=ON
+cmake -B build -DEZCHORDSANDHARMONY_BUILD_TESTS=ON
 cmake --build build --config Debug --target ChordPreviewTests MelodyTests PluginInteractionTests
 ctest --test-dir build -C Debug --output-on-failure
 ```
