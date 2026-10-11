@@ -318,6 +318,26 @@ ChordSuggesterAudioProcessorEditor::ChordSuggesterAudioProcessorEditor (ChordSug
     addAndMakeVisible (progressionDisplay);
     addAndMakeVisible (pianoRoll);
 
+    // The "Sound" menu under the title: which built-in sound plays the chords and melodies.
+    // It is shown on both tabs. The sounds themselves are made in PreviewPlayback.h.
+    addAndMakeVisible (soundChoice);
+    soundChoice.setComponentID ("sound");
+    for (int i = 0; i < PreviewPlayback::numSounds; ++i)
+        soundChoice.addItem (juce::String ("Sound: ") + PreviewPlayback::soundName (PreviewPlayback::Sound (i)), i + 1);
+    soundChoice.setSelectedId (int (audioProcessor.getPreviewSound()) + 1, juce::dontSendNotification);
+    soundChoice.onChange = [this]
+    {
+        audioProcessor.setPreviewSound (PreviewPlayback::Sound (soundChoice.getSelectedId() - 1));
+
+        // Let the user hear the new sound straight away, unless something is already playing
+        // (in which case it simply carries on in the new sound).
+        if (! melodyPlaying && ! progressionPlaying)
+        {
+            if (! showingMelody) midiKeyboard.showChordPlayback (currentChord.notes);
+            audioProcessor.previewChord (currentChord);
+        }
+    };
+
     // Dragging this handle writes the melody (plus the chords, if "With chords" is on)
     // to a MIDI file and hands it to the DAW.
     addAndMakeVisible (melodyDragHandle);
@@ -459,6 +479,10 @@ void ChordSuggesterAudioProcessorEditor::timerCallback()
     }
     pianoRoll.setPlayhead (melodyPlaying ? beat : -1);
     melodyDragHandle.setEnabled (! phrase.notes.empty());   // nothing to drag until there is a melody
+
+    // The DAW can restore a saved project after the window opens, so keep the Sound menu in step.
+    if (soundChoice.getSelectedId() != int (audioProcessor.getPreviewSound()) + 1)
+        soundChoice.setSelectedId (int (audioProcessor.getPreviewSound()) + 1, juce::dontSendNotification);
 }
 
 void ChordSuggesterAudioProcessorEditor::switchTab (bool melodyView)
@@ -902,7 +926,7 @@ void ChordSuggesterAudioProcessorEditor::paint (juce::Graphics& g)
     g.fillAll (juce::Colour (0xff14171c));
     g.setColour (juce::Colours::white);
     g.setFont (juce::FontOptions (24.0f, juce::Font::bold));
-    g.drawText ("ChordSuggester", 24, 18, 235, 36, juce::Justification::centredLeft);
+    g.drawText ("ChordSuggester", 24, 9, 235, 36, juce::Justification::centredLeft);   // sits a little high to leave room for the Sound menu below it
     g.setColour (juce::Colour (0xff343a44));
     g.drawHorizontalLine (71, 0.0f, float (getWidth()));
     g.setColour (juce::Colour (0xff2563eb));
@@ -1093,6 +1117,7 @@ void ChordSuggesterAudioProcessorEditor::resized()
     const auto keyboardArea = juce::Rectangle<int> (24, getHeight() - 112, leftColumnWidth - 48, 88);
     midiKeyboard.setBounds (keyboardArea.reduced (1));
     midiKeyboard.setKeyWidth (float (midiKeyboard.getWidth()) / 7.0f);
+    soundChoice.setBounds (24, 45, 172, 21);
     chordsTab.setBounds (280, 16, 100, 40);
     melodyTab.setBounds (400, 16, 110, 40);
     scaleChoice.setBounds (getWidth() - 285, 22, 261, 32);
