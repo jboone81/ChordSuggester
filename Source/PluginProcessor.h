@@ -42,6 +42,11 @@ public:
     void stopPreview();
     juce::MidiKeyboardState& getMidiKeyboardState() noexcept { return midiKeyboardState; }
 
+    // Which built-in sound plays the chords and melodies (see PreviewPlayback::Sound).
+    // The choice is saved with the DAW project.
+    void setPreviewSound (PreviewPlayback::Sound sound) { preview.setSound (sound); }
+    PreviewPlayback::Sound getPreviewSound() const { return preview.getSound(); }
+
     //==============================================================================
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override;
