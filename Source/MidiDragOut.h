@@ -96,6 +96,59 @@ inline bool writePhrase (const melody::Phrase& phrase, bool includeChords, const
     return stream.openedOk() && file.writeTo (stream);
 }
 
+// Writes a chord progression to a MIDI file, one chord per bar (four beats each).
+// Returns true if the file was written. The chords are voiced the way the plugin plays
+// them: the three notes stacked upward from middle C. One beat is 480 ticks and no tempo
+// is stored, so the chords follow the DAW's own tempo.
+inline bool writeChords (const std::vector<chords::Chord>& progression, const juce::File& destination)
+{
+    if (progression.empty())
+        return false;
+
+    const double ticksPerBar = 4.0 * 480.0;
+    juce::MidiMessageSequence track;
+
+    for (size_t bar = 0; bar < progression.size(); ++bar)
+    {
+        int previous = -1;
+
+        for (int pitch : progression[bar].notes)
+        {
+            int midiNote = 60 + pitch;
+            while (midiNote <= previous)
+                midiNote += 12;
+
+            previous = midiNote;
+            track.addEvent (juce::MidiMessage::noteOn (1, midiNote, (juce::uint8) 90), (double) bar * ticksPerBar);
+            track.addEvent (juce::MidiMessage::noteOff (1, midiNote), (double) (bar + 1) * ticksPerBar);
+        }
+    }
+
+    track.sort();
+    track.updateMatchedPairs();
+
+    juce::MidiFile file;
+    file.setTicksPerQuarterNote (480);
+    file.addTrack (track);
+
+    destination.deleteFile();
+    juce::FileOutputStream stream (destination);
+    return stream.openedOk() && file.writeTo (stream);
+}
+
+// Writes the chord progression to a MIDI file in the system's temporary folder and returns it.
+// Returns a file that doesn't exist if there was nothing to write.
+inline juce::File writeChordsToTempFile (const std::vector<chords::Chord>& progression)
+{
+    const auto file = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                          .getChildFile ("EZ Chords & Harmony Chords.mid");
+
+    if (! writeChords (progression, file))
+        return {};
+
+    return file;
+}
+
 // Writes the phrase to a MIDI file in the system's temporary folder and returns it.
 // Returns a file that doesn't exist if there was nothing to write.
 inline juce::File writePhraseToTempFile (const melody::Phrase& phrase, bool includeChords)
@@ -124,6 +177,9 @@ public:
     // Set this to a function that writes the MIDI file and returns it.
     std::function<juce::File()> createFile;
 
+    // The words shown on the handle.
+    juce::String label { "Drag to your DAW" };
+
     void paint (juce::Graphics& g) override
     {
         const auto area = getLocalBounds().toFloat().reduced (0.5f);
@@ -143,7 +199,7 @@ public:
 
         g.setColour (active ? juce::Colours::white : juce::Colour (0xff6f7785));
         g.setFont (juce::FontOptions (15.0f));
-        g.drawText ("Drag to your DAW", getLocalBounds().withTrimmedLeft (32).withTrimmedRight (8),
+        g.drawText (label, getLocalBounds().withTrimmedLeft (32).withTrimmedRight (8),
                     juce::Justification::centredLeft);
     }
 

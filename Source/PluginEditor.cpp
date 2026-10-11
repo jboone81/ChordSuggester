@@ -501,6 +501,11 @@ EZChordsAndHarmonyAudioProcessorEditor::EZChordsAndHarmonyAudioProcessorEditor (
     // It is shown on both tabs. The sounds themselves are made in PreviewPlayback.h.
     addAndMakeVisible (soundChoice);
     soundChoice.setComponentID ("sound");
+    soundChoice.setLookAndFeel (&keySelectorLookAndFeel);
+    soundChoice.setColour (juce::ComboBox::backgroundColourId, headerColour);
+    soundChoice.setColour (juce::ComboBox::textColourId, warmCream);
+    soundChoice.setColour (juce::ComboBox::outlineColourId, midTeal);
+    soundChoice.setColour (juce::ComboBox::arrowColourId, warmCream);
     for (int i = 0; i < PreviewPlayback::numSounds; ++i)
         soundChoice.addItem (juce::String ("Sound: ") + PreviewPlayback::soundName (PreviewPlayback::Sound (i)), i + 1);
     soundChoice.setSelectedId (int (audioProcessor.getPreviewSound()) + 1, juce::dontSendNotification);
@@ -524,6 +529,12 @@ EZChordsAndHarmonyAudioProcessorEditor::EZChordsAndHarmonyAudioProcessorEditor (
     {
         return midi_writer::writePhraseToTempFile (phrase, backingButton.getToggleState());
     };
+
+    // The same for the Chords tab: dragging this handle writes "Your progression" to a MIDI
+    // file, one chord per bar, and hands it to the DAW.
+    addAndMakeVisible (chordsDragHandle);
+    chordsDragHandle.label = "Drag chords to DAW";
+    chordsDragHandle.createFile = [this] { return midi_writer::writeChordsToTempFile (progression.all()); };
     progressionDisplay.setMultiLine (false);
     progressionDisplay.setReadOnly (true);
     progressionDisplay.setColour (juce::TextEditor::backgroundColourId, panelColour);
@@ -623,6 +634,7 @@ EZChordsAndHarmonyAudioProcessorEditor::~EZChordsAndHarmonyAudioProcessorEditor(
     scaleChoice.setLookAndFeel (nullptr);
     barsChoice.setLookAndFeel (nullptr);
     timingChoice.setLookAndFeel (nullptr);
+    soundChoice.setLookAndFeel (nullptr);
     for (auto* button : { &generateButton, &playButton, &backingButton, &loopButton, &resetButton,
                           &clearNotesButton, &undoChordButton, &resetChordsButton, &playProgressionButton })
         button->setLookAndFeel (nullptr);
@@ -692,6 +704,8 @@ void EZChordsAndHarmonyAudioProcessorEditor::switchTab (bool melodyView)
     progressionDisplay.setVisible (showingMelody);
     pianoRoll.setVisible (showingMelody);
     melodyDragHandle.setVisible (showingMelody);
+    chordsDragHandle.setVisible (! showingMelody);
+    resized();   // the Sound menu sits in a different place on each tab
     setMouseCursor (juce::MouseCursor::NormalCursor);
     repaint();
 }
@@ -959,7 +973,7 @@ void EZChordsAndHarmonyAudioProcessorEditor::paintProgression (juce::Graphics& g
     for (size_t i = 0; i < chips.size(); ++i)
     {
         const auto& chip = chips[i];
-        g.setColour (chip.current ? accentBlue : juce::Colour (0xff2b3240));
+        g.setColour (chip.current ? coral : teal);
         g.fillRoundedRectangle (chip.bounds.toFloat(), 8.0f);
         if (chip.index >= 0 && chip.index == selectedChip)
         {
@@ -968,10 +982,10 @@ void EZChordsAndHarmonyAudioProcessorEditor::paintProgression (juce::Graphics& g
         }
         if (chip.index >= 0 && chip.index == progressionSounding)
         {
-            g.setColour (juce::Colour (0xfff8cc6a));   // the same gold as the melody playhead
+            g.setColour (coralLight);
             g.drawRoundedRectangle (chip.bounds.toFloat().reduced (1.0f), 8.0f, 2.5f);
         }
-        g.setColour (juce::Colour (0xfff1f3f6));
+        g.setColour (chip.current ? darkTeal : warmCream);
         if (chip.numeral.isEmpty())
         {
             g.drawText (chip.text, chip.bounds, juce::Justification::centred);
@@ -982,7 +996,7 @@ void EZChordsAndHarmonyAudioProcessorEditor::paintProgression (juce::Graphics& g
             const auto textArea = chip.bounds.reduced (11, 0);
             g.setFont (chipFont);
             g.drawText (chip.text, textArea, juce::Justification::centredLeft);
-            g.setColour (juce::Colour (0xfff1f3f6).withAlpha (chip.current ? 0.85f : 0.62f));
+            g.setColour (chip.current ? darkTeal.withAlpha (0.9f) : warmCream.withAlpha (0.86f));
             g.setFont (numeralFont);
             g.drawText (chip.numeral, textArea, juce::Justification::centredRight);
             g.setFont (chipFont);
@@ -1066,33 +1080,13 @@ std::vector<EZChordsAndHarmonyAudioProcessorEditor::ProgressionChip> EZChordsAnd
     return chips;
 }
 
-    g.setFont (chipFont);
-    for (size_t i = 0; i < chips.size(); ++i)
-    {
-        const auto& chip = chips[i];
-        g.setColour (chip.current ? coral : teal);
-        g.fillRoundedRectangle (chip.bounds.toFloat(), 8.0f);
-        if (chip.index >= 0 && chip.index == progressionSounding)
-        {
-            g.setColour (coralLight);
-            g.drawRoundedRectangle (chip.bounds.toFloat().reduced (1.0f), 8.0f, 2.5f);
-        }
-        g.setColour (chip.current ? darkTeal : warmCream);
-        if (chip.numeral.isEmpty())
-        {
-            g.drawText (chip.text, chip.bounds, juce::Justification::centred);
-        }
-        else
-        {
-            // Chord name on the left, its Roman numeral after it in a lighter style.
-            const auto textArea = chip.bounds.reduced (11, 0);
-            g.setFont (chipFont);
-            g.drawText (chip.text, textArea, juce::Justification::centredLeft);
-            g.setColour (chip.current ? darkTeal.withAlpha (0.9f) : warmCream.withAlpha (0.86f));
-            g.setFont (numeralFont);
-            g.drawText (chip.numeral, textArea, juce::Justification::centredRight);
-            g.setFont (chipFont);
-        }
+int EZChordsAndHarmonyAudioProcessorEditor::progressionChipAt (juce::Point<int> position) const
+{
+    for (const auto& chip : progressionChips())
+        if (chip.index >= 0 && chip.bounds.contains (position))
+            return chip.index;
+    return -1;
+}
 
 juce::Rectangle<int> EZChordsAndHarmonyAudioProcessorEditor::chipDeleteBounds (const ProgressionChip& chip) const
 {
@@ -1420,7 +1414,7 @@ void EZChordsAndHarmonyAudioProcessorEditor::paint (juce::Graphics& g)
         const int overChip = progressionChipAt (dragPosition);
         for (const auto target : { currentChordBounds(), progressionBounds() })
         {
-            const bool hovered = target.contains (dragPosition);
+            const bool hovered = target.contains (dragPosition) && overChip < 0;
             g.setColour (warmCream.withAlpha (hovered ? 0.16f : 0.06f));
             g.fillRoundedRectangle (target.toFloat(), 12.0f);
             g.setColour (warmCream.withAlpha (hovered ? 0.82f : 0.46f));
@@ -1439,7 +1433,8 @@ void EZChordsAndHarmonyAudioProcessorEditor::paint (juce::Graphics& g)
             }
 
         const auto& dragged = suggestions[(size_t) dragRow];
-        const auto ghost = juce::Rectangle<float> (110.0f, 48.0f).withCentre (dragPosition.toFloat());
+        // Drawn up and to the right of the pointer so it doesn't hide what it's being dropped on.
+        const auto ghost = juce::Rectangle<float> (110.0f, 48.0f).withPosition (dragPosition.toFloat() + juce::Point<float> (16.0f, -58.0f));
         g.setColour (safetyRed.interpolatedWith (safetyBlue, dragged.safety).withAlpha (0.96f));
         g.fillRoundedRectangle (ghost, 10.0f);
         g.setColour (warmCream.withAlpha (overTarget ? 1.0f : 0.7f));
@@ -1463,12 +1458,17 @@ void EZChordsAndHarmonyAudioProcessorEditor::resized()
     const auto keyboardArea = juce::Rectangle<int> (24, getHeight() - 112, leftColumnWidth - 48, 88);
     midiKeyboard.setBounds (keyboardArea.reduced (1));
     midiKeyboard.setKeyWidth (float (midiKeyboard.getWidth()) / 7.0f);
-    soundChoice.setBounds (24, 45, 172, 21);
+    // The Sound menu: in the header on the Chords tab, and under "Reset progression" on the
+    // Melody tab, where the header has no room for it.
+    soundChoice.setBounds (showingMelody ? juce::Rectangle<int> (getWidth() - 205, 179, 181, 26)
+                                         : juce::Rectangle<int> (530, 24, 160, 28));
     chordsTab.setBounds (280, 16, 100, 40);
     melodyTab.setBounds (400, 16, 110, 40);
     scaleChoice.setBounds (getWidth() - 285, 22, 261, 32);
     generateButton.setBounds (200, 86, 180, 36);
     melodyDragHandle.setBounds (392, 86, 172, 36);
+    // Right-hand end of the "MIDI keyboard" heading row, just under the progression's buttons.
+    chordsDragHandle.setBounds (leftColumnWidth - 24 - 180, keyboardArea.getY() - 31, 180, 26);
     clearNotesButton.setBounds (576, 86, 130, 36);
     barsChoice.setBounds (getWidth() - 325, 86, 85, 36);
     timingChoice.setBounds (getWidth() - 150, 86, 126, 36);
