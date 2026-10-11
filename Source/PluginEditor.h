@@ -135,7 +135,7 @@ private:
     // Makes newChord the chord you have, then works out fresh suggestions for it.
     void setCurrentChord (const chords::Chord& newChord);
 
-    // The "More chords" drop-down: every chord that isn't already a suggestion.
+    // The "More chords" drop-down: chords from outside the key that real songs do play next.
     void updateMoreChords();
     void chooseMoreChord();
 

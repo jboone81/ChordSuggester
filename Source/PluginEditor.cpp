@@ -881,20 +881,9 @@ void EZChordsAndHarmonyAudioProcessorEditor::updateMoreChords()
         add (s.chord, juce::String (s.chord.fullName) + "  (" + (percent < 1 ? juce::String ("<1") : juce::String (percent)) + "%)");
     }
 
-    // Everything else: every major, minor and diminished chord, starting from the key note.
-    headingAdded = false;
-    for (int state = 0; state < chords::data::numStates; ++state)
-    {
-        const auto chord = chords::chordFromDataState (state, keyRoot);
-        if (alreadyShown (chord))
-            continue;
-        if (! headingAdded)
-        {
-            moreChords.addSectionHeading ("All other chords");
-            headingAdded = true;
-        }
-        add (chord, chord.fullName);
-    }
+    // Only chords that real songs do use here are offered. If there are none beyond the
+    // suggestions already on screen, the menu says so when opened.
+    moreChords.setTextWhenNoChoicesAvailable ("No other common chords");
 }
 
 void EZChordsAndHarmonyAudioProcessorEditor::chooseMoreChord()
