@@ -11,6 +11,7 @@
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
 #include "ChordEngine.h"
+#include "ChordExplain.h"
 #include "MidiChordReader.h"
 #include "MidiDragOut.h"
 #include <optional>
@@ -118,6 +119,15 @@ private:
 
     // Which suggestion is under this point, or -1 if none.
     int rowAt (juce::Point<int> position) const;
+
+    // The "Explain why" button on suggestion number `index`, and which one is under a point (-1 if none).
+    juce::Rectangle<int> explainButtonBounds (int index) const;
+    int explainButtonAt (juce::Point<int> position) const;
+    // Opens a pop-up explaining why suggestion number `index` works after the current chord.
+    void showExplanation (int index);
+    // The small "Explain why" tag beside "Your progression", which explains the Roman numerals.
+    juce::Rectangle<int> numeralsHelpBounds() const;
+    void showNumeralsHelp();
     juce::Rectangle<int> currentChordBounds() const;
     juce::Rectangle<int> transitionBounds() const;
     juce::Rectangle<int> progressionBounds() const;
@@ -158,6 +168,9 @@ private:
     int dragRow = -1;                  // the suggestion the mouse went down on, while the button is held
     bool draggingChord = false;        // true once that press has moved far enough to be a drag
     juce::Point<int> dragPosition;
+    int hoveredExplain = -1;   // the "Explain why" button the mouse is over, or -1
+    bool hoveredNumeralsHelp = false;   // true while the mouse is over the tag beside "Your progression"
+    juce::Component::SafePointer<juce::CallOutBox> explanationBox;   // the explanation pop-up while it is open
     melody::Progression progression { currentChord };
     melody::Estimate scaleEstimate;
     melody::Phrase phrase;

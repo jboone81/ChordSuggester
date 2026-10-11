@@ -38,6 +38,59 @@ juce::String noteNames (const std::array<int, 3>& notes, bool useFlats)
     return result;
 }
 
+// What the "Explain why" pop-up shows: a title, then a few short points with bullets.
+class ExplanationPanel final : public juce::Component
+{
+public:
+    explicit ExplanationPanel (const chords::Explanation& explanation)
+    {
+        const auto makeLayout = [] (const std::string& text, juce::Font font, juce::Colour colour, float width)
+        {
+            juce::AttributedString string;
+            string.setJustification (juce::Justification::topLeft);
+            string.setWordWrap (juce::AttributedString::byWord);
+            string.append (juce::String::fromUTF8 (text.c_str()), font, colour);
+            juce::TextLayout layout;
+            layout.createLayout (string, width);
+            return layout;
+        };
+
+        title = makeLayout (explanation.title, juce::Font (juce::FontOptions (17.0f).withStyle ("Bold")),
+                            juce::Colours::white, textWidth);
+        float height = padding + title.getHeight() + gap;
+
+        for (const auto& point : explanation.points)
+        {
+            points.push_back (makeLayout (point, juce::Font (juce::FontOptions (14.5f)),
+                                          juce::Colour (0xffe5e8ee), textWidth - bulletIndent));
+            height += points.back().getHeight() + gap;
+        }
+
+        // The panel is as tall as its text needs.
+        setSize ((int) (textWidth + padding * 2.0f), (int) std::ceil (height - gap + padding));
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        float y = padding;
+        title.draw (g, { padding, y, textWidth, title.getHeight() });
+        y += title.getHeight() + gap;
+
+        for (const auto& point : points)
+        {
+            g.setColour (juce::Colour (0xff7aa2ff));
+            g.fillEllipse (padding + 2.0f, y + 6.0f, 5.0f, 5.0f);
+            point.draw (g, { padding + bulletIndent, y, textWidth - bulletIndent, point.getHeight() });
+            y += point.getHeight() + gap;
+        }
+    }
+
+private:
+    static constexpr float padding = 14.0f, gap = 10.0f, textWidth = 340.0f, bulletIndent = 16.0f;
+    juce::TextLayout title;
+    std::vector<juce::TextLayout> points;
+};
+
 const char* safetyDescription (float safety)
 {
     if (safety >= 0.8f) return "Safest";
@@ -358,6 +411,11 @@ ChordSuggesterAudioProcessorEditor::ChordSuggesterAudioProcessorEditor (ChordSug
 
 ChordSuggesterAudioProcessorEditor::~ChordSuggesterAudioProcessorEditor()
 {
+    if (explanationBox != nullptr)
+    {
+        explanationBox->exitModalState (0);
+        explanationBox->setVisible (false);
+    }
     keySelector.setLookAndFeel (nullptr);
     audioProcessor.stopPreview();
 }
@@ -663,6 +721,16 @@ void ChordSuggesterAudioProcessorEditor::paintProgression (juce::Graphics& g)
     g.drawText ("Your progression", area.getX(), area.getY() - 30, area.getWidth(), 24,
                 juce::Justification::centredLeft);
 
+    // The small "Explain why" tag: explains what the Roman numerals on the chips mean.
+    const auto helpTag = numeralsHelpBounds().toFloat();
+    g.setColour (juce::Colours::white.withAlpha (hoveredNumeralsHelp ? 0.22f : 0.10f));
+    g.fillRoundedRectangle (helpTag, 6.0f);
+    g.setColour (juce::Colours::white.withAlpha (0.35f));
+    g.drawRoundedRectangle (helpTag.reduced (0.5f), 6.0f, 1.0f);
+    g.setColour (juce::Colour (0xfff1f3f6));
+    g.setFont (juce::FontOptions (12.0f).withStyle ("Bold"));
+    g.drawText ("Explain why", helpTag, juce::Justification::centred);
+
     g.setColour (panelColour);
     g.fillRoundedRectangle (area.toFloat(), 12.0f);
     g.setColour (juce::Colour (0xff353d4b));
@@ -671,31 +739,39 @@ void ChordSuggesterAudioProcessorEditor::paintProgression (juce::Graphics& g)
     // Chords as chips with arrows between, wrapping onto new lines. If they don't all
     // fit, the oldest are left out and a "..." chip stands in for them.
     const juce::Font chipFont (juce::FontOptions (15.0f).withStyle ("Bold"));
+    // Each chip also shows the chord's Roman numeral in the chosen key (I, ii, V...), in a
+    // lighter style after the name. It follows the Key menu, so it updates when the key changes.
+    const juce::Font numeralFont (juce::FontOptions (13.0f));
+    const int numeralGap = 7;
     const auto& all = progression.all();
     const auto inner = area.reduced (12, 10);
     const int chipHeight = 28, lineGap = 8, arrowWidth = 20;
     const auto ellipsis = juce::String::fromUTF8 ("\xe2\x80\xa6");
 
-    struct Chip { juce::String text; juce::Rectangle<int> bounds; bool current; int index; };
+    struct Chip { juce::String text, numeral; juce::Rectangle<int> bounds; bool current; int index; };
     const auto layout = [&] (size_t first, std::vector<Chip>& chips)
     {
         chips.clear();
         int x = inner.getX(), y = inner.getY();
-        struct Item { juce::String text; bool current; int index; };
+        struct Item { juce::String text, numeral; bool current; int index; };
         std::vector<Item> items;
-        if (first > 0) items.push_back ({ ellipsis, false, -1 });
+        if (first > 0) items.push_back ({ ellipsis, {}, false, -1 });
         for (size_t i = first; i < all.size(); ++i)
-            items.push_back ({ juce::String (all[i].name), i + 1 == all.size(), (int) i });
+            items.push_back ({ juce::String (all[i].name),
+                               juce::String::fromUTF8 (chords::romanNumeral (all[i], keyRoot).c_str()),
+                               i + 1 == all.size(), (int) i });
 
         for (size_t i = 0; i < items.size(); ++i)
         {
-            const int width = juce::roundToInt (juce::GlyphArrangement::getStringWidth (chipFont, items[i].text)) + 22;
+            int width = juce::roundToInt (juce::GlyphArrangement::getStringWidth (chipFont, items[i].text)) + 22;
+            if (items[i].numeral.isNotEmpty())
+                width += numeralGap + juce::roundToInt (juce::GlyphArrangement::getStringWidth (numeralFont, items[i].numeral));
             if (x > inner.getX() && x + width > inner.getRight())
             {
                 x = inner.getX();
                 y += chipHeight + lineGap;
             }
-            chips.push_back ({ items[i].text, { x, y, width, chipHeight }, items[i].current, items[i].index });
+            chips.push_back ({ items[i].text, items[i].numeral, { x, y, width, chipHeight }, items[i].current, items[i].index });
             x += width + arrowWidth;
         }
         return chips.empty() || chips.back().bounds.getBottom() <= inner.getBottom();
@@ -716,7 +792,21 @@ void ChordSuggesterAudioProcessorEditor::paintProgression (juce::Graphics& g)
             g.drawRoundedRectangle (chip.bounds.toFloat().reduced (1.0f), 8.0f, 2.5f);
         }
         g.setColour (juce::Colour (0xfff1f3f6));
-        g.drawText (chip.text, chip.bounds, juce::Justification::centred);
+        if (chip.numeral.isEmpty())
+        {
+            g.drawText (chip.text, chip.bounds, juce::Justification::centred);
+        }
+        else
+        {
+            // Chord name on the left, its Roman numeral after it in a lighter style.
+            const auto textArea = chip.bounds.reduced (11, 0);
+            g.setFont (chipFont);
+            g.drawText (chip.text, textArea, juce::Justification::centredLeft);
+            g.setColour (juce::Colour (0xfff1f3f6).withAlpha (chip.current ? 0.85f : 0.62f));
+            g.setFont (numeralFont);
+            g.drawText (chip.numeral, textArea, juce::Justification::centredRight);
+            g.setFont (chipFont);
+        }
 
         // Arrow to the next chip when it's on the same line.
         if (i + 1 < chips.size() && chips[i + 1].bounds.getY() == chip.bounds.getY())
@@ -732,6 +822,7 @@ void ChordSuggesterAudioProcessorEditor::updateCursor (juce::Point<int> position
 {
     if (showingMelody) return;
     const bool clickable = rowAt (position) >= 0 || currentChordBounds().contains (position)
+        || numeralsHelpBounds().contains (position)
         || (previewedChord.has_value() && transitionBounds().contains (position));
     setMouseCursor (clickable ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
 }
@@ -754,6 +845,55 @@ int ChordSuggesterAudioProcessorEditor::rowAt (juce::Point<int> position) const
             return i;
 
     return -1;
+}
+
+juce::Rectangle<int> ChordSuggesterAudioProcessorEditor::explainButtonBounds (int index) const
+{
+    const auto row = rowBounds (index);
+    const int width = 104, height = 22;
+
+    // Under the chord's notes when the row is tall enough for a third line...
+    if (row.getHeight() >= 82)
+        return { row.getX() + 116, row.getY() + 55, width, height };
+
+    // ...otherwise (a short window) beside them, just left of the Safe/Dramatic label.
+    return { row.getRight() - 124 - width, row.getCentreY() - height / 2, width, height };
+}
+
+int ChordSuggesterAudioProcessorEditor::explainButtonAt (juce::Point<int> position) const
+{
+    for (int i = 0; i < (int) suggestions.size(); ++i)
+        if (explainButtonBounds (i).contains (position))
+            return i;
+
+    return -1;
+}
+
+void ChordSuggesterAudioProcessorEditor::showExplanation (int index)
+{
+    if (index < 0 || index >= (int) suggestions.size())
+        return;
+
+    // The wording comes from chords::explain in ChordExplain.h. The pop-up points at the
+    // button, closes when the user clicks anywhere else, and deletes itself.
+    auto panel = std::make_unique<ExplanationPanel> (chords::explain (currentChord, suggestions[(size_t) index].chord, keyRoot));
+    explanationBox = &juce::CallOutBox::launchAsynchronously (std::move (panel), explainButtonBounds (index), this);
+}
+
+juce::Rectangle<int> ChordSuggesterAudioProcessorEditor::numeralsHelpBounds() const
+{
+    // Just to the right of the "Your progression" heading.
+    const auto area = progressionBounds();
+    const juce::Font headingFont (juce::FontOptions (17.0f).withStyle ("Bold"));
+    const int headingWidth = juce::roundToInt (juce::GlyphArrangement::getStringWidth (headingFont, "Your progression"));
+    return { area.getX() + headingWidth + 12, area.getY() - 28, 86, 20 };
+}
+
+void ChordSuggesterAudioProcessorEditor::showNumeralsHelp()
+{
+    // The wording comes from chords::explainRomanNumerals in ChordExplain.h, using the chosen key for its examples.
+    auto panel = std::make_unique<ExplanationPanel> (chords::explainRomanNumerals (keyRoot));
+    explanationBox = &juce::CallOutBox::launchAsynchronously (std::move (panel), numeralsHelpBounds(), this);
 }
 
 //==============================================================================
@@ -877,6 +1017,16 @@ void ChordSuggesterAudioProcessorEditor::paint (juce::Graphics& g)
         g.drawText (details, detailsX, row.getY() + 31, detailsWidth, 20,
                     juce::Justification::centredLeft);
 
+        // The "Explain why" button. Clicking it is handled in mouseDown.
+        const auto explainButton = explainButtonBounds (i).toFloat();
+        g.setColour (juce::Colours::white.withAlpha (i == hoveredExplain ? 0.32f : 0.16f));
+        g.fillRoundedRectangle (explainButton, 6.0f);
+        g.setColour (juce::Colours::white.withAlpha (0.45f));
+        g.drawRoundedRectangle (explainButton.reduced (0.5f), 6.0f, 1.0f);
+        g.setColour (juce::Colours::white);
+        g.setFont (juce::FontOptions (13.0f).withStyle ("Bold"));
+        g.drawText ("Explain why", explainButton, juce::Justification::centred);
+
         g.setFont (juce::FontOptions (15.0f).withStyle ("Bold"));
         g.drawText (safetyDescription (suggestion.safety), row.getRight() - 112, row.getY(),
                     92, row.getHeight(), juce::Justification::centredRight);
@@ -965,6 +1115,19 @@ void ChordSuggesterAudioProcessorEditor::mouseDown (const juce::MouseEvent& even
     if (showingMelody || ! event.mods.isLeftButtonDown() || event.getNumberOfClicks() != 1)
         return;
     const auto position = event.getPosition();
+
+    // "Explain why" opens the explanation and does nothing else (no preview).
+    if (const int explain = explainButtonAt (position); explain >= 0)
+    {
+        showExplanation (explain);
+        return;
+    }
+    if (numeralsHelpBounds().contains (position))
+    {
+        showNumeralsHelp();
+        return;
+    }
+
     const int row = rowAt (position);
 
     dragRow = row;   // pressing on a suggestion can also start dragging it
@@ -997,6 +1160,8 @@ void ChordSuggesterAudioProcessorEditor::mouseDoubleClick (const juce::MouseEven
 {
     if (showingMelody || ! event.mods.isLeftButtonDown() || event.getNumberOfClicks() != 2)
         return;
+    if (explainButtonAt (event.getPosition()) >= 0)
+        return;   // a double-click on "Explain why" must not select the chord
     const int row = rowAt (event.getPosition());
     if (row >= 0)
         confirmChord (suggestions[(size_t) row].chord);   // the first click's preview keeps sounding
@@ -1043,11 +1208,15 @@ void ChordSuggesterAudioProcessorEditor::mouseUp (const juce::MouseEvent& event)
 void ChordSuggesterAudioProcessorEditor::mouseMove (const juce::MouseEvent& event)
 {
     const int row = showingMelody ? -1 : rowAt (event.getPosition());
+    const int explain = showingMelody ? -1 : explainButtonAt (event.getPosition());
+    const bool numeralsHelp = ! showingMelody && numeralsHelpBounds().contains (event.getPosition());
     updateCursor (event.getPosition());
 
-    if (row != hoveredRow)
+    if (row != hoveredRow || explain != hoveredExplain || numeralsHelp != hoveredNumeralsHelp)
     {
         hoveredRow = row;
+        hoveredExplain = explain;
+        hoveredNumeralsHelp = numeralsHelp;
         repaint();
     }
 }
@@ -1055,9 +1224,10 @@ void ChordSuggesterAudioProcessorEditor::mouseMove (const juce::MouseEvent& even
 void ChordSuggesterAudioProcessorEditor::mouseExit (const juce::MouseEvent&)
 {
     setMouseCursor (juce::MouseCursor::NormalCursor);
-    if (hoveredRow != -1)
+    if (hoveredRow != -1 || hoveredExplain != -1 || hoveredNumeralsHelp)
     {
-        hoveredRow = -1;
+        hoveredRow = hoveredExplain = -1;
+        hoveredNumeralsHelp = false;
         repaint();
     }
 }
