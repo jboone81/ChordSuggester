@@ -198,6 +198,11 @@ juce::AudioProcessorEditor* ChordSuggesterAudioProcessor::createEditor()
 //==============================================================================
 void ChordSuggesterAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
+    // Saved with the DAW project: the chosen built-in sound.
+    juce::XmlElement state ("ChordSuggester");
+    state.setAttribute ("sound", int (preview.getSound()));
+    copyXmlToBinary (state, destData);
+
     // You should use this method to store your parameters in the memory block.
     // You could do that either as raw data, or use the XML or ValueTree classes
     // as intermediaries to make it easy to save and load complex data.
@@ -205,6 +210,9 @@ void ChordSuggesterAudioProcessor::getStateInformation (juce::MemoryBlock& destD
 
 void ChordSuggesterAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
+    if (const auto state = getXmlFromBinary (data, sizeInBytes); state != nullptr && state->hasTagName ("ChordSuggester"))
+        preview.setSound (PreviewPlayback::Sound (state->getIntAttribute ("sound", 0)));
+
     // You should use this method to restore your parameters from this memory block,
     // whose contents will have been created by the getStateInformation() call.
 }

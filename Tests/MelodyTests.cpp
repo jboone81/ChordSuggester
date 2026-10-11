@@ -273,6 +273,31 @@ int main()
         player.phrase (sixteenths);
         const auto dense = render (player, rate * 16 + 128);
         check (dense[rate * 15 + 100] != 0 && dense[rate * 16] == 0, "All 128 sixteenth notes play without truncation");
+
+        // Every built-in sound plays the same notes at a sensible level, starting and ending in silence.
+        player.reset (rate);
+        player.chord (chords[0]);
+        const auto softChord = render (player, rate + 128);
+        for (int soundIndex = 1; soundIndex < PreviewPlayback::numSounds; ++soundIndex)
+        {
+            player.reset (rate);
+            player.setSound (PreviewPlayback::Sound (soundIndex));
+            check (player.getSound() == PreviewPlayback::Sound (soundIndex), "Sound choice is remembered");
+            player.chord (chords[0]);
+            const auto other = render (player, rate + 128);
+            double early = 0, late = 0;
+            for (int i = 0; i < rate; ++i)
+            {
+                check (std::isfinite (other[i]) && std::abs (other[i]) <= 0.3f, "Built-in sounds stay at a safe level");
+                if (i >= rate / 20 && i < rate / 5) early += other[i] * other[i];
+                if (i >= rate * 7 / 10 && i < rate * 17 / 20) late += other[i] * other[i];
+            }
+            check (other != softChord && early > 1, "Each sound is audible and differs from Soft");
+            check (other[0] == 0 && other[rate] == 0, "Each sound starts and stops in silence");
+            if (PreviewPlayback::Sound (soundIndex) == PreviewPlayback::Sound::plucked)
+                check (late < early * 0.25, "Plucked notes die away");
+        }
+        player.setSound (PreviewPlayback::Sound::soft);
     }
     // Exercise ownership exchanges while producer and consumer run concurrently.
     player.reset (48000);

@@ -200,6 +200,7 @@ private:
     size_t progressionFirst = 0, progressionCount = 0;   // which chords are playing
     int progressionSounding = -1;                         // index into progression.all(), or -1
     juce::ComboBox scaleChoice, barsChoice, timingChoice;
+    juce::ComboBox soundChoice;   // under the title: which built-in sound plays the chords and melodies
     juce::TextEditor progressionDisplay;
     bool melodyPlaying = false, seenPlayhead = false;
     MidiDragHandle melodyDragHandle;   // on the Melody tab: drag the suggested melody out to a DAW track
