@@ -65,9 +65,10 @@ public:
             g.fillRect (area.getX(), y, area.getWidth(), rowHeight);
             g.setColour (juce::Colour (0xff343a44));
             g.drawHorizontalLine (y, float (area.getX()), float (area.getRight()));
-            g.setColour (juce::Colour (inScale ? 0xffe5e8ee : 0xff343a44));
+            const bool sounding = isSounding (midi);   // the key lights up blue while its note plays
+            g.setColour (sounding ? juce::Colour (0xff2563eb) : juce::Colour (inScale ? 0xffe5e8ee : 0xff343a44));
             g.fillRect (0, y + 1, area.getX() - 2, rowHeight - 2);
-            g.setColour (inScale ? juce::Colour (0xff14171c) : juce::Colour (0xffb2bac7));
+            g.setColour (sounding ? juce::Colours::white : inScale ? juce::Colour (0xff14171c) : juce::Colour (0xffb2bac7));
             g.setFont (juce::FontOptions (12.0f));
             g.drawText (juce::String (chords::noteName (midi % 12)) + juce::String (midi / 12 - 1),
                         8, y, area.getX() - 12, rowHeight, juce::Justification::centredLeft);
@@ -116,28 +117,93 @@ public:
         {
             g.setColour (juce::Colours::white);
             g.setFont (juce::FontOptions (16.0f));
-            g.drawText ("New suggestion generates notes. Double-click the grid to add your own.",
+            g.drawText ("Click or drag on the grid to draw your own melody, or press New suggestion.",
                         area.reduced (20), juce::Justification::centred);
         }
         g.restoreState();
     }
     void mouseDown (const juce::MouseEvent& event) override
     {
+        // Right-click a note to delete it.
+        if (event.mods.isRightButtonDown())
+        {
+            if (const int index = hit (event.position); index >= 0 && melody::deleteNote (phrase, index))
+            {
+                selected = -1;
+                if (onEdit) onEdit();
+                repaint();
+            }
+            return;
+        }
         if (! event.mods.isLeftButtonDown()) return;
         if (isShowing()) grabKeyboardFocus();
+        // A click on the piano at the left plays that key.
+        if (const int key = keyAt (event.position); key >= 0)
+        {
+            playingKeys = true;
+            heldMidi = key;
+            if (onAudition) onAudition (key);
+            repaint();
+            return;
+        }
         selected = hit (event.position);
-        dragging = false;
+        dragging = drawing = false;
+        // A click on an empty part of the grid draws a note there; dragging right makes it longer.
+        if (selected < 0 && event.getNumberOfClicks() == 1 && gridArea().toFloat().contains (event.position))
+        {
+            const melody::Note note { pitchAt (event.position.y), grid,
+                                      std::clamp (std::floor (beatAt (event.position.x) / grid) * grid, 0.0, phrase.lengthBeats - grid) };
+            const int index = melody::addNote (phrase, note);
+            rejected = index < 0;
+            if (index >= 0)
+            {
+                selected = index;
+                drawing = true;
+                original = note;
+                heldMidi = note.midi;
+                if (onEdit) onEdit();
+                if (onAudition) onAudition (note.midi);
+            }
+            repaint();
+            return;
+        }
         if (selected >= 0)
         {
             original = phrase.notes[size_t (selected)];
             origin = event.position;
             resizing = event.position.x >= noteBounds (original).getRight() - resizeWidth (original);
             if (onAudition && event.getNumberOfClicks() == 1) onAudition (original.midi);
+            heldMidi = original.midi;
         }
         repaint();
     }
     void mouseDrag (const juce::MouseEvent& event) override
     {
+        if (playingKeys)
+        {
+            // Sliding up or down the piano plays each key the mouse reaches.
+            if (const int key = keyAt (event.position); key >= 0 && key != heldMidi)
+            {
+                heldMidi = key;
+                if (onAudition) onAudition (key);
+                repaint();
+            }
+            return;
+        }
+        if (drawing)
+        {
+            // Stretch the new note to the grid line at or after the mouse. Stops short of the next note.
+            auto note = original;
+            const double end = std::ceil (beatAt (event.position.x) / grid) * grid;
+            double limit = phrase.lengthBeats;
+            for (size_t i = 0; i < phrase.notes.size(); ++i)
+                if (int (i) != selected && phrase.notes[i].startBeat >= note.startBeat)
+                    limit = std::min (limit, phrase.notes[i].startBeat);
+            note.beats = std::clamp (end - note.startBeat, grid, std::max (grid, limit - note.startBeat));
+            if (note.beats != phrase.notes[size_t (selected)].beats && melody::editNote (phrase, selected, note))
+                repaint();
+            return;
+        }
         if (selected < 0 || ! event.mods.isLeftButtonDown()) return;
         if (! dragging && event.position.getDistanceFrom (origin) < 3) return;
         if (! dragging && onEdit) onEdit();
@@ -157,9 +223,10 @@ public:
             note.midi = std::clamp (original.midi - int (std::round ((event.position.y - origin.y) / rowHeight)), 60, 84);
         }
         rejected = ! melody::editNote (phrase, selected, note);
+        heldMidi = phrase.notes[size_t (selected)].midi;
         repaint();
     }
-    void mouseUp (const juce::MouseEvent&) override { dragging = false; }
+    void mouseUp (const juce::MouseEvent&) override { dragging = drawing = playingKeys = false; heldMidi = -1; repaint(); }
     void mouseDoubleClick (const juce::MouseEvent& event) override
     {
         if (! event.mods.isLeftButtonDown() || ! gridArea().contains (event.getPosition()) || hit (event.position) >= 0) return;
@@ -173,6 +240,7 @@ public:
         if (index >= 0)
         {
             selected = index;
+            heldMidi = note.midi;
             if (onEdit) onEdit();
             if (onAudition) onAudition (note.midi);
         }
@@ -189,7 +257,8 @@ public:
         const int index = hit (event.position);
         setMouseCursor (index >= 0 && event.position.x >= noteBounds (phrase.notes[size_t (index)]).getRight() - resizeWidth (phrase.notes[size_t (index)])
                         ? juce::MouseCursor::LeftRightResizeCursor
-                        : index >= 0 ? juce::MouseCursor::DraggingHandCursor : juce::MouseCursor::NormalCursor);
+                        : index >= 0 ? juce::MouseCursor::DraggingHandCursor
+                        : keyAt (event.position) >= 0 ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
     }
     void mouseWheelMove (const juce::MouseEvent& event, const juce::MouseWheelDetails& wheel) override
     {
@@ -201,7 +270,33 @@ public:
 private:
     void scrollBarMoved (juce::ScrollBar*, double) override { repaint(); }
     juce::Rectangle<int> gridArea() const { return { 60, 32, std::max (1, getWidth() - 76), std::max (1, getHeight() - 48) }; }
-    double beatWidth() const { return std::max (48.0, gridArea().getWidth() / 16.0); }
+    // The bars stretch so the whole phrase fills the grid's width, however many bars there are.
+    // Scrolling only starts if the window is so narrow that a beat would be thinner than 24 pixels.
+    double beatWidth() const { return std::max (24.0, gridArea().getWidth() / (phrase.lengthBeats > 0.0 ? phrase.lengthBeats : 16.0)); }
+    // Which piano key (as a MIDI note, 60 to 84) is under this point, or -1 if the point isn't on the piano.
+    int keyAt (juce::Point<float> point) const
+    {
+        const auto area = gridArea();
+        if (point.x < 0 || point.x >= area.getX() || point.y < area.getY() || point.y >= area.getBottom()) return -1;
+        const int midi = 84 - int ((point.y - area.getY() + vertical.getCurrentRangeStart()) / rowHeight);
+        return midi >= 60 && midi <= 84 ? midi : -1;
+    }
+    // True while this key's note is sounding: the playhead is inside one of its notes during
+    // playback, or the user is holding the mouse down on one of its notes or on the key itself.
+    bool isSounding (int midi) const
+    {
+        if (midi == heldMidi) return true;
+        if (playhead < 0) return false;
+        for (const auto& note : phrase.notes)
+            if (note.midi == midi && playhead >= note.startBeat && playhead < note.startBeat + note.beats) return true;
+        return false;
+    }
+    // The beat and the pitch (60 to 84) under a point in the grid, allowing for scrolling.
+    double beatAt (float x) const { return (x - gridArea().getX() + horizontal.getCurrentRangeStart()) / beatWidth(); }
+    int pitchAt (float y) const
+    {
+        return std::clamp (84 - int ((y - gridArea().getY() + vertical.getCurrentRangeStart()) / rowHeight), 60, 84);
+    }
     double resizeWidth (const melody::Note& note) const { return std::min (7.0, double (noteBounds (note).getWidth()) / 3.0); }
     int hit (juce::Point<float> point) const
     {
@@ -214,8 +309,8 @@ private:
     juce::ScrollBar horizontal { false }, vertical { true };
     static constexpr int rowHeight = 16;
     double grid = 0.5, playhead = -1;
-    int selected = -1;
-    bool resizing = false, dragging = false, rejected = false, initialScroll = true;
+    int selected = -1, heldMidi = -1;
+    bool resizing = false, dragging = false, drawing = false, playingKeys = false, rejected = false, initialScroll = true;
     melody::Note original;
     juce::Point<float> origin;
 };

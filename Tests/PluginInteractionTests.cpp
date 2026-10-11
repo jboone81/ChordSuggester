@@ -38,12 +38,22 @@ static void snapshot (juce::Component& editor, const juce::String& filename)
     check (png.writeImageToStream (image, stream), "Snapshot renders");
 }
 
-static juce::MouseEvent pointerEvent (juce::Component& component, juce::Point<float> point, int count = 1)
+static juce::MouseEvent pointerEvent (juce::Component& component, juce::Point<float> point, int count = 1,
+                                      int button = juce::ModifierKeys::leftButtonModifier)
+{
+    const auto now = juce::Time::getCurrentTime();
+    return { juce::Desktop::getInstance().getMainMouseSource(), point,
+             juce::ModifierKeys (button),
+             1.0f, 0.0f, 0.0f, 0.0f, 0.0f, &component, &component, now, point, now, count, false };
+}
+
+// A mouse event at `point` for a press that started at `downPoint` (for drags).
+static juce::MouseEvent dragEvent (juce::Component& component, juce::Point<float> point, juce::Point<float> downPoint)
 {
     const auto now = juce::Time::getCurrentTime();
     return { juce::Desktop::getInstance().getMainMouseSource(), point,
              juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier),
-             1.0f, 0.0f, 0.0f, 0.0f, 0.0f, &component, &component, now, point, now, count, false };
+             1.0f, 0.0f, 0.0f, 0.0f, 0.0f, &component, &component, now, downPoint, now, 1, false };
 }
 
 static void testEditing()
@@ -85,14 +95,47 @@ static void testEditing()
     check (phrase.notes.size() == 2 && phrase.notes.back().startBeat == 0 && phrase.notes.back().beats == 0.5, "Double-click adds grid note");
     roll.keyPressed (juce::KeyPress (juce::KeyPress::backspaceKey));
     check (phrase.notes.size() == 1, "Backspace removes selected note");
+
+    // Drawing: click an empty cell for a one-step note, drag right to lengthen it.
+    phrase.notes = { {74, 1, 2} };
+    bounds = roll.noteBounds ({67, 0.5, 0});
+    point = { bounds.getX() + 2, bounds.getCentreY() };
+    roll.mouseDown (pointerEvent (roll, point));
+    check (phrase.notes.size() == 2 && phrase.notes.back().midi == 67 && phrase.notes.back().beats == 0.5
+           && phrase.notes.back().startBeat == 0, "Click on empty grid draws a note");
+    roll.mouseDrag (pointerEvent (roll, point + juce::Point<float> (float (beatWidth * 1.2), 0)));
+    check (phrase.notes.back().beats == 1.5, "Dragging lengthens the drawn note to the grid");
+    roll.mouseDrag (pointerEvent (roll, point + juce::Point<float> (float (beatWidth * 3.5), 0)));
+    roll.mouseUp (pointerEvent (roll, point));
+    check (phrase.notes.back().beats == 2.0, "Drawn note stretches up to the next note");
+    roll.mouseDown (pointerEvent (roll, roll.noteBounds (phrase.notes.back()).getCentre(), 1,
+                                  juce::ModifierKeys::rightButtonModifier));
+    check (phrase.notes.size() == 1 && phrase.notes[0].midi == 74, "Right-click deletes a note");
 }
 int main()
 {
     juce::ScopedJuceInitialiser_GUI gui;
     testEditing();
-    ChordSuggesterAudioProcessor processor;
+    EZChordsAndHarmonyAudioProcessor processor;
+    for (const auto* tag : { "EZChordsAndHarmony", "Chord" "Suggester" })
+    {
+        juce::XmlElement state (tag);
+        state.setAttribute ("sound", int (PreviewPlayback::Sound::organ));
+        juce::MemoryBlock data;
+        juce::AudioProcessor::copyXmlToBinary (state, data);
+        processor.setPreviewSound (PreviewPlayback::Sound::soft);
+        processor.setStateInformation (data.getData(), int (data.getSize()));
+        check (processor.getPreviewSound() == PreviewPlayback::Sound::organ,
+               "Current and legacy saved state restore the sound");
+    }
+    juce::MemoryBlock savedState;
+    processor.getStateInformation (savedState);
+    const auto savedXml = juce::AudioProcessor::getXmlFromBinary (savedState.getData(), int (savedState.getSize()));
+    check (savedXml != nullptr && savedXml->hasTagName ("EZChordsAndHarmony"),
+           "Saved state uses the new product identifier");
+    processor.setPreviewSound (PreviewPlayback::Sound::soft);
     processor.prepareToPlay (48000, 128);
-    ChordSuggesterAudioProcessorEditor editor (processor);
+    EZChordsAndHarmonyAudioProcessorEditor editor (processor);
     check (history (editor).getText() == "C", "Starting chord recorded once");
     editor.mouseDown (event (editor, 1));
     check (history (editor).getText() == "C", "UI preview excluded from history");
@@ -212,7 +255,41 @@ int main()
             choice->onChange();
         }
     check (! button (editor, "Play").isEnabled(), "Scale change invalidates phrase");
-    ChordSuggesterAudioProcessorEditor reopened (processor);
+    EZChordsAndHarmonyAudioProcessorEditor reopened (processor);
     check (history (reopened).getText() == "C", "New editor resets prototype history");
+    // Dragging a suggestion onto "Your chord" selects it, like a double-click; letting go elsewhere does nothing.
+    const juce::Point<float> rowPoint { 600.0f, 150.0f };
+    reopened.mouseDown (dragEvent (reopened, rowPoint, rowPoint));
+    reopened.mouseDrag (dragEvent (reopened, { 300.0f, 170.0f }, rowPoint));
+    reopened.mouseUp (dragEvent (reopened, { 150.0f, 200.0f }, rowPoint));
+    check (history (reopened).getText().startsWith ("C -> "), "Dropping a suggestion on Your chord selects it");
+    const auto afterDrop = history (reopened).getText();
+    reopened.mouseDown (dragEvent (reopened, rowPoint, rowPoint));
+    reopened.mouseDrag (dragEvent (reopened, { 700.0f, 400.0f }, rowPoint));
+    reopened.mouseUp (dragEvent (reopened, { 700.0f, 400.0f }, rowPoint));
+    check (history (reopened).getText() == afterDrop, "Dropping a suggestion elsewhere changes nothing");
+
+    // Editing "Your progression": click a chord to select it, Delete removes it, and dropping a
+    // suggestion onto a chord replaces it. The first chip starts at the panel's top-left corner.
+    const juce::Point<float> firstChip { 46.0f, 464.0f };
+    const auto chordCount = [&]
+    {
+        const auto text = history (reopened).getText();
+        int count = 1;
+        for (int at = text.indexOf (" -> "); at >= 0; at = text.indexOf (at + 1, " -> ")) ++count;
+        return count;
+    };
+    const int before = chordCount();
+    reopened.mouseDown (dragEvent (reopened, firstChip, firstChip));
+    reopened.mouseUp (dragEvent (reopened, firstChip, firstChip));
+    check (reopened.keyPressed (juce::KeyPress (juce::KeyPress::deleteKey)), "Delete acts on a selected chord");
+    check (chordCount() == before - 1 && ! history (reopened).getText().startsWith ("C -> "), "Delete removes the selected chord");
+    const auto firstName = history (reopened).getText().upToFirstOccurrenceOf (" -> ", false, false);
+    reopened.mouseDown (dragEvent (reopened, rowPoint, rowPoint));
+    reopened.mouseDrag (dragEvent (reopened, { 300.0f, 300.0f }, rowPoint));
+    reopened.mouseUp (dragEvent (reopened, firstChip, rowPoint));
+    check (chordCount() == before - 1 && history (reopened).getText().upToFirstOccurrenceOf (" -> ", false, false) != firstName,
+           "Dropping a suggestion on a chord replaces it");
+    check (! reopened.keyPressed (juce::KeyPress (juce::KeyPress::deleteKey)), "Nothing is selected after an edit");
     std::cout << "Plugin interaction and passthrough tests passed\n";
 }

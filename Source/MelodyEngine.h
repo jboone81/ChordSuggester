@@ -84,6 +84,27 @@ public:
     explicit Progression (const chords::Chord& start) : history { start } {}
     void confirm (const chords::Chord& chord) { history.push_back (chord); }
     void reset (const chords::Chord& chord) { history = { chord }; }
+    // Removes the most recent chord, always keeping the first. False if there was nothing to remove.
+    bool removeLast()
+    {
+        if (history.size() <= 1) return false;
+        history.pop_back();
+        return true;
+    }
+    // Removes the chord at this position, always keeping at least one. False if it can't.
+    bool removeAt (size_t index)
+    {
+        if (history.size() <= 1 || index >= history.size()) return false;
+        history.erase (history.begin() + (std::ptrdiff_t) index);
+        return true;
+    }
+    // Swaps the chord at this position for another. False if there is no such position.
+    bool replaceAt (size_t index, const chords::Chord& chord)
+    {
+        if (index >= history.size()) return false;
+        history[index] = chord;
+        return true;
+    }
     const std::vector<chords::Chord>& all() const { return history; }
     std::vector<chords::Chord> recent() const
     {
@@ -120,6 +141,19 @@ inline Estimate estimate (const std::vector<chords::Chord>& progression)
     return { candidates[0].scale, candidates[1].scale, candidates[0].score - candidates[1].score <= 6 };
 }
 
+// One note or rest in a bar's rhythm. Position and length are counted in Timing steps from the start of the bar.
+struct RhythmSlot { int start = 0; int length = 1; bool rest = false; };
+
+// Builds the suggested melody.
+//
+// Rhythm: each bar is a mix of short notes, held notes and the odd rest, in whole Timing steps.
+//         A note or rest always starts on beats one and three, and a bar never opens with a rest.
+// Shape:  the bars follow a pattern. Bar one states an idea (A) and bar two answers it (B). Later
+//         bars bring those ideas back with the same rhythm and the same ups and downs, moved to
+//         fit that bar's chord. The last bar leads to one long final note: the scale's home note
+//         when it belongs to the last chord, otherwise that chord's own root.
+// Pitch:  notes stay in the scale, move mostly by small steps, and notes starting on beats one
+//         and three belong to the bar's chord.
 inline Phrase generate (const std::vector<chords::Chord>& progression, Scale scale, uint32_t seed,
                         int bars = 0, double grid = 1.0)
 {
@@ -129,32 +163,139 @@ inline Phrase generate (const std::vector<chords::Chord>& progression, Scale sca
     phrase.lengthBeats = double (phrase.chords.size()) * 4.0;
     grid = grid == 0.25 || grid == 0.5 ? grid : 1.0;
     std::mt19937 rng (seed);
-    int previous = 72;
-    for (size_t bar = 0; bar < phrase.chords.size(); ++bar)
-        for (int step = 0; step < int (4.0 / grid); ++step)
+    const int barCount = int (phrase.chords.size());
+    const int stepsPerBar = int (4.0 / grid), half = stepsPerBar / 2;
+
+    // Every note the melody may use: the scale's notes from C4 to C6, low to high.
+    std::vector<int> allowed;
+    for (int midi = 60; midi <= 84; ++midi) if (scale.contains (midi)) allowed.push_back (midi);
+
+    // The allowed notes that belong to a chord. If none do, any allowed note will have to serve.
+    const auto chordTones = [&allowed] (const chords::Chord& chord)
+    {
+        std::vector<int> tones;
+        for (int midi : allowed)
+            if (std::find (chord.notes.begin(), chord.notes.end(), midi % 12) != chord.notes.end()) tones.push_back (midi);
+        return tones.empty() ? allowed : tones;
+    };
+    const auto nearest = [] (const std::vector<int>& choices, int target)
+    {
+        return *std::min_element (choices.begin(), choices.end(), [target] (int a, int b)
+                                  { return std::abs (a - target) < std::abs (b - target); });
+    };
+    // Picks at random, favouring notes close to the previous one. Repeating the same note is unlikely.
+    const auto pickNear = [&rng] (const std::vector<int>& choices, int previous)
+    {
+        std::vector<double> weights;
+        for (int midi : choices)
         {
-            const double beat = step * grid;
-            const bool strong = beat == 0.0 || beat == 2.0;
-            std::vector<int> candidates;
-            for (int midi = 60; midi <= 84; ++midi)
-            {
-                const bool chordTone = std::find (phrase.chords[bar].notes.begin(), phrase.chords[bar].notes.end(),
-                                                  midi % 12) != phrase.chords[bar].notes.end();
-                if (scale.contains (midi) && (! strong || chordTone)) candidates.push_back (midi);
-            }
-            if (candidates.empty())
-                for (int midi = 60; midi <= 84; ++midi) if (scale.contains (midi)) candidates.push_back (midi);
-            // Nearer notes receive greater probability; strong beats prefer chord tones.
-            std::vector<double> weights;
-            for (int midi : candidates)
-            {
-                const int distance = std::abs (midi - previous);
-                weights.push_back (distance == 0 ? 0.12 : 1.0 / (1.0 + distance * distance * 0.5));
-            }
-            std::discrete_distribution<size_t> choose (weights.begin(), weights.end());
-            previous = candidates[choose (rng)];
-            phrase.notes.push_back ({ previous, grid, double (bar) * 4.0 + beat });
+            const int distance = std::abs (midi - previous);
+            weights.push_back (distance == 0 ? 0.12 : 1.0 / (1.0 + distance * distance * 0.5));
         }
+        std::discrete_distribution<size_t> choose (weights.begin(), weights.end());
+        return choices[choose (rng)];
+    };
+
+    // Adds a rhythm for the steps from `from` up to (not including) `to`.
+    const auto addRhythm = [&] (std::vector<RhythmSlot>& rhythm, int from, int to)
+    {
+        // How likely a note is to last 1, 2, 3 or 4 steps. Faster timings lean towards longer notes.
+        const std::array<double, 4> lengthWeights = grid == 1.0 ? std::array<double, 4> { 5, 3, 0, 0 }
+                                                  : grid == 0.5 ? std::array<double, 4> { 4, 4, 1, 2 }
+                                                                : std::array<double, 4> { 3, 5, 1, 4 };
+        const int longestRest = int (1.0 / grid);   // a rest lasts one beat at most
+        for (int position = from; position < to; )
+        {
+            auto weights = lengthWeights;
+            for (int length = 2; length <= 4; ++length)
+                if (position + length > to) weights[size_t (length - 1)] = 0;
+            std::discrete_distribution<int> chooseLength (weights.begin(), weights.end());
+            int length = 1 + chooseLength (rng);
+            // A rest now and then, but never to open the bar and never two in a row.
+            const bool rest = position != 0 && ! (! rhythm.empty() && rhythm.back().rest)
+                              && std::uniform_real_distribution<double> (0.0, 1.0) (rng) < 0.12;
+            if (rest) length = std::min (length, longestRest);
+            rhythm.push_back ({ position, length, rest });
+            position += length;
+        }
+    };
+
+    int previous = 72;   // the melody starts out around C5
+    const auto addNote = [&] (int bar, const RhythmSlot& slot, int midi)
+    {
+        phrase.notes.push_back ({ midi, slot.length * grid, double (bar) * 4.0 + slot.start * grid });
+        previous = midi;
+    };
+    const auto isStrong = [half] (const RhythmSlot& slot) { return slot.start == 0 || slot.start == half; };
+
+    // Fills a rhythm with freshly chosen notes and returns them (-1 marks a rest).
+    const auto writeFresh = [&] (int bar, const std::vector<RhythmSlot>& rhythm)
+    {
+        const auto tones = chordTones (phrase.chords[size_t (bar)]);
+        std::vector<int> pitches;
+        for (const auto& slot : rhythm)
+        {
+            if (slot.rest) { pitches.push_back (-1); continue; }
+            addNote (bar, slot, pickNear (isStrong (slot) ? tones : allowed, previous));
+            pitches.push_back (previous);
+        }
+        return pitches;
+    };
+
+    // An idea is one bar of music that can come back later: its rhythm and the notes it used.
+    struct Idea { std::vector<RhythmSlot> rhythm; std::vector<int> pitches; bool written = false; };
+
+    // Brings an idea back in another bar: same rhythm, same ups and downs, moved up or down the
+    // scale so that it starts on a note of this bar's chord.
+    const auto writeRepeat = [&] (int bar, const Idea& idea)
+    {
+        const auto tones = chordTones (phrase.chords[size_t (bar)]);
+        const auto indexOf = [&allowed] (int midi)
+        { return int (std::find (allowed.begin(), allowed.end(), midi) - allowed.begin()); };
+        int shift = 0;
+        bool first = true;
+        for (size_t i = 0; i < idea.rhythm.size(); ++i)
+        {
+            if (idea.rhythm[i].rest) continue;
+            const int source = idea.pitches[i];
+            if (first) shift = indexOf (nearest (tones, source)) - indexOf (source);
+            first = false;
+            int midi = allowed[size_t (std::clamp (indexOf (source) + shift, 0, int (allowed.size()) - 1))];
+            if (isStrong (idea.rhythm[i])) midi = nearest (tones, midi);
+            addNote (bar, idea.rhythm[i], midi);
+        }
+    };
+
+    Idea ideaA, ideaB;
+    for (int bar = 0; bar < barCount; ++bar)
+    {
+        if (bar == barCount - 1)
+        {
+            // The ending: half a bar that echoes how the melody began, then one long final note.
+            std::vector<RhythmSlot> rhythm;
+            if (ideaA.written)
+                for (const auto& slot : ideaA.rhythm) { if (slot.start < half) rhythm.push_back (slot); }
+            else
+                addRhythm (rhythm, 0, half);
+            writeFresh (bar, rhythm);
+
+            const auto& chord = phrase.chords[size_t (bar)];
+            const bool homeFits = std::find (chord.notes.begin(), chord.notes.end(), scale.root) != chord.notes.end();
+            const int wanted = homeFits ? scale.root : chord.notes[0];
+            std::vector<int> endings;
+            for (int midi : allowed) if (midi % 12 == wanted) endings.push_back (midi);
+            if (endings.empty()) endings = chordTones (chord);
+            addNote (bar, { half, half, false }, nearest (endings, previous));
+            break;
+        }
+
+        Idea& idea = bar % 2 == 0 ? ideaA : ideaB;
+        if (idea.written) { writeRepeat (bar, idea); continue; }
+        addRhythm (idea.rhythm, 0, half);
+        addRhythm (idea.rhythm, half, stepsPerBar);
+        idea.pitches = writeFresh (bar, idea.rhythm);
+        idea.written = true;
+    }
     return phrase;
 }
 }

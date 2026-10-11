@@ -10,7 +10,7 @@
 #include "PluginEditor.h"
 
 //==============================================================================
-ChordSuggesterAudioProcessor::ChordSuggesterAudioProcessor()
+EZChordsAndHarmonyAudioProcessor::EZChordsAndHarmonyAudioProcessor()
 #ifndef JucePlugin_PreferredChannelConfigurations
      : AudioProcessor (BusesProperties()
                      #if ! JucePlugin_IsMidiEffect
@@ -24,17 +24,17 @@ ChordSuggesterAudioProcessor::ChordSuggesterAudioProcessor()
 {
 }
 
-ChordSuggesterAudioProcessor::~ChordSuggesterAudioProcessor()
+EZChordsAndHarmonyAudioProcessor::~EZChordsAndHarmonyAudioProcessor()
 {
 }
 
 //==============================================================================
-const juce::String ChordSuggesterAudioProcessor::getName() const
+const juce::String EZChordsAndHarmonyAudioProcessor::getName() const
 {
     return JucePlugin_Name;
 }
 
-bool ChordSuggesterAudioProcessor::acceptsMidi() const
+bool EZChordsAndHarmonyAudioProcessor::acceptsMidi() const
 {
    #if JucePlugin_WantsMidiInput
     return true;
@@ -43,7 +43,7 @@ bool ChordSuggesterAudioProcessor::acceptsMidi() const
    #endif
 }
 
-bool ChordSuggesterAudioProcessor::producesMidi() const
+bool EZChordsAndHarmonyAudioProcessor::producesMidi() const
 {
    #if JucePlugin_ProducesMidiOutput
     return true;
@@ -52,7 +52,7 @@ bool ChordSuggesterAudioProcessor::producesMidi() const
    #endif
 }
 
-bool ChordSuggesterAudioProcessor::isMidiEffect() const
+bool EZChordsAndHarmonyAudioProcessor::isMidiEffect() const
 {
    #if JucePlugin_IsMidiEffect
     return true;
@@ -61,49 +61,49 @@ bool ChordSuggesterAudioProcessor::isMidiEffect() const
    #endif
 }
 
-double ChordSuggesterAudioProcessor::getTailLengthSeconds() const
+double EZChordsAndHarmonyAudioProcessor::getTailLengthSeconds() const
 {
     return 16.01;
 }
 
-int ChordSuggesterAudioProcessor::getNumPrograms()
+int EZChordsAndHarmonyAudioProcessor::getNumPrograms()
 {
     return 1;   // NB: some hosts don't cope very well if you tell them there are 0 programs,
                 // so this should be at least 1, even if you're not really implementing programs.
 }
 
-int ChordSuggesterAudioProcessor::getCurrentProgram()
+int EZChordsAndHarmonyAudioProcessor::getCurrentProgram()
 {
     return 0;
 }
 
-void ChordSuggesterAudioProcessor::setCurrentProgram (int index)
+void EZChordsAndHarmonyAudioProcessor::setCurrentProgram (int index)
 {
 }
 
-const juce::String ChordSuggesterAudioProcessor::getProgramName (int index)
+const juce::String EZChordsAndHarmonyAudioProcessor::getProgramName (int index)
 {
     return {};
 }
 
-void ChordSuggesterAudioProcessor::changeProgramName (int index, const juce::String& newName)
+void EZChordsAndHarmonyAudioProcessor::changeProgramName (int index, const juce::String& newName)
 {
 }
 
 //==============================================================================
-void ChordSuggesterAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
+void EZChordsAndHarmonyAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     juce::ignoreUnused (samplesPerBlock);
     preview.reset (sampleRate);
 }
 
-void ChordSuggesterAudioProcessor::releaseResources()
+void EZChordsAndHarmonyAudioProcessor::releaseResources()
 {
     preview.reset (getSampleRate());
 }
 
 #ifndef JucePlugin_PreferredChannelConfigurations
-bool ChordSuggesterAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
+bool EZChordsAndHarmonyAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
   #if JucePlugin_IsMidiEffect
     juce::ignoreUnused (layouts);
@@ -128,7 +128,7 @@ bool ChordSuggesterAudioProcessor::isBusesLayoutSupported (const BusesLayout& la
 }
 #endif
 
-void ChordSuggesterAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
+void EZChordsAndHarmonyAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedNoDenormals noDenormals;
     auto totalNumInputChannels  = getTotalNumInputChannels();
@@ -155,51 +155,65 @@ void ChordSuggesterAudioProcessor::processBlock (juce::AudioBuffer<float>& buffe
     }
 }
 
-void ChordSuggesterAudioProcessor::previewChord (const chords::Chord& chord)
+void EZChordsAndHarmonyAudioProcessor::previewChord (const chords::Chord& chord)
 {
     preview.chord (chord);
 }
 
-void ChordSuggesterAudioProcessor::previewTransition (const chords::Chord& current, const chords::Chord& next)
+void EZChordsAndHarmonyAudioProcessor::previewTransition (const chords::Chord& current, const chords::Chord& next)
 {
     preview.chord (current, &next);
 }
 
-void ChordSuggesterAudioProcessor::previewPhrase (const melody::Phrase& phrase, bool withChords, bool loop)
+void EZChordsAndHarmonyAudioProcessor::previewPhrase (const melody::Phrase& phrase, bool withChords, bool loop)
 {
     preview.phrase (phrase, withChords, loop);
 }
 
-void ChordSuggesterAudioProcessor::previewNote (int midi) { preview.audition (midi); }
-void ChordSuggesterAudioProcessor::setMelodyBackingEnabled (bool enabled) { preview.setMelodyBackingEnabled (enabled); }
-double ChordSuggesterAudioProcessor::melodyPlayhead() const { return preview.playheadBeat(); }
+void EZChordsAndHarmonyAudioProcessor::previewNote (int midi) { preview.audition (midi); }
+void EZChordsAndHarmonyAudioProcessor::setMelodyBackingEnabled (bool enabled) { preview.setMelodyBackingEnabled (enabled); }
+double EZChordsAndHarmonyAudioProcessor::melodyPlayhead() const { return preview.playheadBeat(); }
 
-void ChordSuggesterAudioProcessor::stopPreview()
+int EZChordsAndHarmonyAudioProcessor::previewProgression (const std::vector<chords::Chord>& progression)
+{
+    return preview.progression (progression);
+}
+
+void EZChordsAndHarmonyAudioProcessor::stopPreview()
 {
     preview.stop();
 }
 
 //==============================================================================
-bool ChordSuggesterAudioProcessor::hasEditor() const
+bool EZChordsAndHarmonyAudioProcessor::hasEditor() const
 {
     return true; // (change this to false if you choose to not supply an editor)
 }
 
-juce::AudioProcessorEditor* ChordSuggesterAudioProcessor::createEditor()
+juce::AudioProcessorEditor* EZChordsAndHarmonyAudioProcessor::createEditor()
 {
-    return new ChordSuggesterAudioProcessorEditor (*this);
+    return new EZChordsAndHarmonyAudioProcessorEditor (*this);
 }
 
 //==============================================================================
-void ChordSuggesterAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
+void EZChordsAndHarmonyAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
+    // Saved with the DAW project: the chosen built-in sound.
+    juce::XmlElement state ("EZChordsAndHarmony");
+    state.setAttribute ("sound", int (preview.getSound()));
+    copyXmlToBinary (state, destData);
+
     // You should use this method to store your parameters in the memory block.
     // You could do that either as raw data, or use the XML or ValueTree classes
     // as intermediaries to make it easy to save and load complex data.
 }
 
-void ChordSuggesterAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
+void EZChordsAndHarmonyAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
+    if (const auto state = getXmlFromBinary (data, sizeInBytes); state != nullptr
+        && (state->hasTagName ("EZChordsAndHarmony") || state->hasTagName ("ChordSuggester")))
+        preview.setSound (PreviewPlayback::Sound (state->getIntAttribute ("sound", 0)));
+
     // You should use this method to restore your parameters from this memory block,
     // whose contents will have been created by the getStateInformation() call.
 }
@@ -208,5 +222,5 @@ void ChordSuggesterAudioProcessor::setStateInformation (const void* data, int si
 // This creates new instances of the plugin..
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
-    return new ChordSuggesterAudioProcessor();
+    return new EZChordsAndHarmonyAudioProcessor();
 }
