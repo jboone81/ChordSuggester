@@ -990,7 +990,7 @@ void ChordSuggesterAudioProcessorEditor::paint (juce::Graphics& g)
     g.fillAll (juce::Colour (0xff14171c));
     g.setColour (juce::Colours::white);
     g.setFont (juce::FontOptions (24.0f, juce::Font::bold));
-    g.drawText ("ChordSuggester", 24, 18, 235, 36, juce::Justification::centredLeft);
+    g.drawFittedText ("EZ Chords & Harmony", 24, 18, 235, 36, juce::Justification::centredLeft, 1);
     g.setColour (juce::Colour (0xff343a44));
     g.drawHorizontalLine (71, 0.0f, float (getWidth()));
     g.setColour (juce::Colour (0xff2563eb));
