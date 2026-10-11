@@ -52,7 +52,15 @@ public:
     }
     void paint (juce::Graphics& g) override
     {
-        g.fillAll (juce::Colour (0xff14171c));
+        const juce::Colour background (0xff0b292b);
+        const juce::Colour panel (0xff103538);
+        const juce::Colour warmCream (0xfff8f0d8);
+        const juce::Colour warmBrown (0xff28716d);
+        const juce::Colour coral (0xffff6b5e);
+        const juce::Colour teal (0xff168982);
+        const juce::Colour goldenYellow (0xfff5cb2f);
+        const juce::Colour mint (0xff9ddba0);
+        g.fillAll (background);
         const auto area = gridArea();
         const double xOffset = horizontal.getCurrentRangeStart(), yOffset = vertical.getCurrentRangeStart();
         g.saveState();
@@ -61,14 +69,14 @@ public:
         {
             const int y = area.getY() + int ((84 - midi) * rowHeight - yOffset);
             const bool inScale = scale.contains (midi);
-            g.setColour (juce::Colour (inScale ? 0xff20252d : 0xff0e1115));
+            g.setColour (inScale ? panel : background.brighter (0.08f));
             g.fillRect (area.getX(), y, area.getWidth(), rowHeight);
-            g.setColour (juce::Colour (0xff343a44));
+            g.setColour (warmBrown.withAlpha (0.82f));
             g.drawHorizontalLine (y, float (area.getX()), float (area.getRight()));
-            const bool sounding = isSounding (midi);   // the key lights up blue while its note plays
-            g.setColour (sounding ? juce::Colour (0xff2563eb) : juce::Colour (inScale ? 0xffe5e8ee : 0xff343a44));
+            const bool sounding = isSounding (midi);   // the key lights up while its note plays
+            g.setColour (sounding ? goldenYellow : (inScale ? teal : warmBrown));
             g.fillRect (0, y + 1, area.getX() - 2, rowHeight - 2);
-            g.setColour (sounding ? juce::Colours::white : inScale ? juce::Colour (0xff14171c) : juce::Colour (0xffb2bac7));
+            g.setColour (sounding ? background : warmCream);
             g.setFont (juce::FontOptions (12.0f));
             g.drawText (juce::String (chords::noteName (midi % 12)) + juce::String (midi / 12 - 1),
                         8, y, area.getX() - 12, rowHeight, juce::Justification::centredLeft);
@@ -80,15 +88,15 @@ public:
         {
             const double beat = step * grid;
             const int x = area.getX() + int (beat * beatWidth() - xOffset);
-            g.setColour (juce::Colour (std::fmod (beat, 4.0) == 0 ? 0xff657080 : 0xff303641));
+            g.setColour (std::fmod (beat, 4.0) == 0 ? coral : warmBrown);
             g.drawVerticalLine (x, float (area.getY()), float (area.getBottom()));
         }
         for (size_t bar = 0; bar < phrase.chords.size(); ++bar)
         {
             const int x = area.getX() + int (bar * 4 * beatWidth() - xOffset);
-            g.setColour (juce::Colour (0xff20252d));
+            g.setColour (background);
             g.fillRect (x, 0, int (4 * beatWidth()) - 1, area.getY() - 1);
-            g.setColour (juce::Colours::white);
+            g.setColour (warmCream);
             g.setFont (juce::FontOptions (15.0f));
             g.drawText (juce::String (int (bar) + 1) + "  " + juce::String (phrase.chords[bar].name),
                         x + 10, 0, int (4 * beatWidth()) - 20, area.getY(), juce::Justification::centredLeft);
@@ -99,23 +107,28 @@ public:
         for (size_t i = 0; i < phrase.notes.size(); ++i)
         {
             const auto bounds = noteBounds (phrase.notes[i]);
-            g.setColour (juce::Colour (0xff2563eb));
+            const bool isSelected = (int) i == selected;
+            juce::ColourGradient noteGradient (
+                coral, bounds.getX(), bounds.getY(),
+                teal, bounds.getRight(), bounds.getBottom(), false);
+            noteGradient.addColour (0.4, goldenYellow);
+            g.setGradientFill (noteGradient);
             g.fillRoundedRectangle (bounds, 4.0f);
-            if (int (i) == selected)
+            if (isSelected)
             {
-                g.setColour (juce::Colours::white);
-                g.drawRoundedRectangle (bounds, 4.0f, 2.0f);
+                g.setColour (mint);
+                g.drawRoundedRectangle (bounds.expanded (1.0f), 4.0f, 1.5f);
             }
         }
         if (playhead >= 0)
         {
-            g.setColour (juce::Colour (0xfff8cc6a));
+            g.setColour (coral);
             const float x = float (area.getX() + playhead * beatWidth() - xOffset);
             g.drawLine (x, float (area.getY()), x, float (area.getBottom()), 2.0f);
         }
         if (phrase.notes.empty())
         {
-            g.setColour (juce::Colours::white);
+            g.setColour (warmCream);
             g.setFont (juce::FontOptions (16.0f));
             g.drawText ("Click or drag on the grid to draw your own melody, or press New suggestion.",
                         area.reduced (20), juce::Justification::centred);

@@ -17,13 +17,35 @@
 #include <optional>
 #include "PianoRoll.h"
 
-class NavigationButton : public juce::TextButton
+class InteractiveTextButton : public juce::TextButton
 {
 public:
     using juce::TextButton::TextButton;
-    void paintButton (juce::Graphics& g, bool, bool) override
+
+    void paintButton (juce::Graphics& g, bool isMouseOverButton, bool isButtonDown) override
     {
-        g.setColour (getToggleState() ? juce::Colours::white : juce::Colour (0xffa7afbc));
+        const float offset = isButtonDown ? 2.0f : isMouseOverButton ? 1.0f : 0.0f;
+        g.addTransform (juce::AffineTransform::translation (0.0f, offset));
+        juce::TextButton::paintButton (g, isMouseOverButton, isButtonDown);
+    }
+};
+
+class NavigationButton : public InteractiveTextButton
+{
+public:
+    using InteractiveTextButton::InteractiveTextButton;
+    void paintButton (juce::Graphics& g, bool isMouseOverButton, bool isButtonDown) override
+    {
+        const float offset = isButtonDown ? 2.0f : isMouseOverButton ? 1.0f : 0.0f;
+        g.addTransform (juce::AffineTransform::translation (0.0f, offset));
+        const auto bounds = getLocalBounds().toFloat().reduced (4.0f, 2.0f);
+        if (getToggleState() || isMouseOverButton || isButtonDown)
+        {
+            g.setColour (getToggleState() ? juce::Colour (0xff168982).withAlpha (0.42f)
+                                          : juce::Colour (0xffff6b5e).withAlpha (isButtonDown ? 0.34f : 0.2f));
+            g.fillRoundedRectangle (bounds, 9.0f);
+        }
+        g.setColour (getToggleState() ? juce::Colour (0xfff5cb2f) : juce::Colour (0xffd9e4d7));
         g.setFont (juce::FontOptions (20.0f, juce::Font::bold));
         g.drawText (getButtonText(), getLocalBounds(), juce::Justification::centred);
     }
@@ -70,6 +92,8 @@ private:
 class RoundedKeySelectorLookAndFeel final : public juce::LookAndFeel_V4
 {
 public:
+    void drawButtonBackground (juce::Graphics&, juce::Button&, const juce::Colour&,
+                               bool isMouseOverButton, bool isButtonDown) override;
     void drawComboBox (juce::Graphics& g, int width, int height, bool isButtonDown,
                        int buttonX, int buttonY, int buttonW, int buttonH,
                        juce::ComboBox& box) override;
@@ -178,11 +202,11 @@ private:
     uint32_t generationSeed = std::random_device {}();
     bool showingMelody = false;
     NavigationButton chordsTab { "Chords" }, melodyTab { "Melody" };
-    juce::TextButton generateButton { "New suggestion" }, playButton { "Play" }, clearNotesButton { "Clear notes" };
-    juce::TextButton backingButton { "With chords" }, loopButton { "Loop" };
-    juce::TextButton resetButton { "Reset progression" };
-    juce::TextButton undoChordButton { "Undo last" }, resetChordsButton { "Reset" };
-    juce::TextButton playProgressionButton { "Play" };
+    InteractiveTextButton generateButton { "New suggestion" }, playButton { "Play" }, clearNotesButton { "Clear notes" };
+    InteractiveTextButton backingButton { "With chords" }, loopButton { "Loop" };
+    InteractiveTextButton resetButton { "Reset progression" };
+    InteractiveTextButton undoChordButton { "Undo last" }, resetChordsButton { "Reset" };
+    InteractiveTextButton playProgressionButton { "Play" };
     bool progressionPlaying = false;
     juce::uint32 progressionStartedAt = 0;
     size_t progressionFirst = 0, progressionCount = 0;   // which chords are playing

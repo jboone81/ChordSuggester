@@ -8,6 +8,8 @@
 
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include <cmath>
+#include <tuple>
 
 namespace
 {
@@ -16,12 +18,138 @@ constexpr int leftColumnWidth = 380;
 constexpr int keyboardFirstNote = 60;
 constexpr int keyboardLastNote = 71;
 
-juce::Colour backgroundColour   { 0xff1b1e26 };
-juce::Colour headerColour       { 0xff151820 };
-juce::Colour panelColour        { 0xff20242d };
-juce::Colour secondaryText     { 0xffa7afbc };
-juce::Colour accentBlue        { 0xff2563eb };
-juce::Colour dramaticGray      { 0xff4a4e55 };
+const juce::Colour coral          { 0xffff6b5e };
+const juce::Colour darkTeal       { 0xff0b292b };
+const juce::Colour midTeal        { 0xff114447 };
+const juce::Colour warmCream      { 0xfff8f0d8 };
+const juce::Colour teal           { 0xff168982 };
+const juce::Colour softTeal       { 0xff28716d };
+const juce::Colour goldenYellow   { 0xfff5cb2f };
+const juce::Colour mint           { 0xff9ddba0 };
+const juce::Colour coralLight     { 0xffff9277 };
+const juce::Colour mutedCoral     { 0xff744239 };
+const juce::Colour safetyBlue     { 0xff28716d };
+const juce::Colour safetyRed      { 0xffff6b5e };
+juce::Colour headerColour        { 0xff081f22 };
+juce::Colour panelColour         { 0xff103538 };
+juce::Colour secondaryText       { 0xffd9e4d7 };
+
+void drawGrainyGradient (juce::Graphics& g, juce::Rectangle<int> bounds)
+{
+    const auto area = bounds.toFloat();
+    juce::ColourGradient gradient (juce::Colour (0xff0d3033), area.getX(), area.getY(),
+                                   darkTeal, area.getRight(), area.getBottom(), false);
+    gradient.addColour (0.34, juce::Colour (0xff174244));
+    gradient.addColour (0.68, panelColour);
+    g.setGradientFill (gradient);
+    g.fillRect (bounds);
+
+    const auto addGlow = [&] (juce::Rectangle<float> glow, juce::Colour colour)
+    {
+        const auto centre = glow.getCentre();
+        juce::ColourGradient glowGradient (colour.withAlpha (0.14f), centre.x, centre.y,
+                                           colour.withAlpha (0.0f), glow.getRight(), centre.y, true);
+        g.setGradientFill (glowGradient);
+        g.fillEllipse (glow);
+    };
+    addGlow ({ area.getWidth() * 0.67f, area.getHeight() * 0.12f,
+               area.getWidth() * 0.43f, area.getHeight() * 0.52f }, teal);
+    addGlow ({ -area.getWidth() * 0.13f, area.getHeight() * 0.55f,
+               area.getWidth() * 0.43f, area.getHeight() * 0.56f }, coral);
+    addGlow ({ area.getWidth() * 0.57f, area.getHeight() * 0.68f,
+               area.getWidth() * 0.38f, area.getHeight() * 0.4f }, goldenYellow);
+
+    juce::Path contour;
+    contour.startNewSubPath (area.getWidth() * 0.72f, area.getHeight() * 0.18f);
+    contour.cubicTo (area.getWidth() * 0.88f, area.getHeight() * 0.05f,
+                     area.getWidth() * 0.99f, area.getHeight() * 0.31f,
+                     area.getWidth() * 0.84f, area.getHeight() * 0.43f);
+    contour.cubicTo (area.getWidth() * 0.75f, area.getHeight() * 0.52f,
+                     area.getWidth() * 0.59f, area.getHeight() * 0.39f,
+                     area.getWidth() * 0.68f, area.getHeight() * 0.27f);
+    g.setColour (mint.withAlpha (0.075f));
+    g.strokePath (contour, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved,
+                                                 juce::PathStrokeType::rounded));
+
+    juce::Path lowerFlow;
+    lowerFlow.startNewSubPath (area.getWidth() * 0.02f, area.getHeight() * 0.78f);
+    lowerFlow.cubicTo (area.getWidth() * 0.21f, area.getHeight() * 0.61f,
+                       area.getWidth() * 0.31f, area.getHeight() * 0.96f,
+                       area.getWidth() * 0.49f, area.getHeight() * 0.82f);
+    lowerFlow.cubicTo (area.getWidth() * 0.65f, area.getHeight() * 0.70f,
+                       area.getWidth() * 0.76f, area.getHeight() * 0.90f,
+                       area.getWidth() * 1.03f, area.getHeight() * 0.72f);
+    g.setColour (coral.withAlpha (0.035f));
+    g.strokePath (lowerFlow, juce::PathStrokeType (52.0f, juce::PathStrokeType::curved,
+                                                   juce::PathStrokeType::rounded));
+    g.setColour (goldenYellow.withAlpha (0.09f));
+    g.strokePath (lowerFlow, juce::PathStrokeType (1.5f, juce::PathStrokeType::curved,
+                                                   juce::PathStrokeType::rounded));
+
+    const auto drawHalftonePatch = [&] (juce::Point<float> centre, float radiusX, float radiusY,
+                                       juce::Colour colour)
+    {
+        constexpr float spacing = 13.0f;
+        for (float y = centre.y - radiusY; y <= centre.y + radiusY; y += spacing)
+            for (float x = centre.x - radiusX; x <= centre.x + radiusX; x += spacing)
+            {
+                const float nx = (x - centre.x) / radiusX;
+                const float ny = (y - centre.y) / radiusY;
+                const float distance = std::sqrt (nx * nx + ny * ny);
+                if (distance >= 1.0f)
+                    continue;
+
+                const float fade = 1.0f - distance;
+                const float dot = 1.0f + fade * 1.25f;
+                g.setColour (colour.withAlpha (0.065f * fade));
+                g.fillEllipse (x - dot, y - dot, dot * 2.0f, dot * 2.0f);
+            }
+    };
+    drawHalftonePatch ({ area.getWidth() * 0.93f, area.getHeight() * 0.56f },
+                       area.getWidth() * 0.13f, area.getHeight() * 0.19f, warmCream);
+    drawHalftonePatch ({ area.getWidth() * 0.09f, area.getHeight() * 0.86f },
+                       area.getWidth() * 0.11f, area.getHeight() * 0.13f, coralLight);
+
+    const auto drawStar = [&] (float x, float y, float size, juce::Colour colour, float alpha)
+    {
+        g.setColour (colour.withAlpha (alpha));
+        g.drawLine (x - size, y, x + size, y, 1.2f);
+        g.drawLine (x, y - size * 1.45f, x, y + size * 1.45f, 1.2f);
+        g.fillEllipse (x - 1.4f, y - 1.4f, 2.8f, 2.8f);
+    };
+    drawStar (area.getWidth() * 0.55f, area.getHeight() * 0.16f, 5.0f, warmCream, 0.18f);
+    drawStar (area.getWidth() * 0.95f, area.getHeight() * 0.82f, 7.0f, coralLight, 0.20f);
+    drawStar (area.getWidth() * 0.08f, area.getHeight() * 0.39f, 4.0f, coralLight, 0.17f);
+    drawStar (area.getWidth() * 0.48f, area.getHeight() * 0.94f, 3.5f, warmCream, 0.16f);
+
+    for (const auto [x, y, size] : { std::tuple { 0.18f, 0.22f, 2.0f },
+                                     std::tuple { 0.34f, 0.48f, 1.6f },
+                                     std::tuple { 0.79f, 0.91f, 2.2f },
+                                     std::tuple { 0.91f, 0.28f, 1.5f },
+                                     std::tuple { 0.24f, 0.73f, 1.8f },
+                                     std::tuple { 0.60f, 0.62f, 1.4f } })
+    {
+        g.setColour (warmCream.withAlpha (0.11f));
+        g.fillEllipse (area.getWidth() * x, area.getHeight() * y, size, size);
+        g.setColour (warmCream.withAlpha (0.08f));
+        g.drawLine (area.getWidth() * x - 3.0f, area.getHeight() * y + size + 2.0f,
+                    area.getWidth() * x + 4.0f, area.getHeight() * y + size + 2.0f, 0.8f);
+    }
+
+    uint32_t seed = 0x9e3779b9;
+    const int grainCount = juce::jmax (1200, bounds.getWidth() * bounds.getHeight() / 420);
+    for (int i = 0; i < grainCount; ++i)
+    {
+        seed = seed * 1664525u + 1013904223u;
+        const float x = (float) bounds.getX() + (float) (seed >> 16) / 65535.0f * area.getWidth();
+        seed = seed * 1664525u + 1013904223u;
+        const float y = (float) bounds.getY() + (float) (seed >> 16) / 65535.0f * area.getHeight();
+        seed = seed * 1664525u + 1013904223u;
+        const float alpha = 0.035f + (float) (seed >> 24) / 255.0f * 0.045f;
+        g.setColour ((i % 4 == 0 ? goldenYellow : (i % 2 == 0 ? warmCream : darkTeal)).withAlpha (alpha));
+        g.fillRect (x, y, 1.0f, 1.0f);
+    }
+}
 
 juce::String noteNames (const std::array<int, 3>& notes, bool useFlats)
 {
@@ -56,13 +184,13 @@ public:
         };
 
         title = makeLayout (explanation.title, juce::Font (juce::FontOptions (17.0f).withStyle ("Bold")),
-                            juce::Colours::white, textWidth);
+                            warmCream, textWidth);
         float height = padding + title.getHeight() + gap;
 
         for (const auto& point : explanation.points)
         {
             points.push_back (makeLayout (point, juce::Font (juce::FontOptions (14.5f)),
-                                          juce::Colour (0xffe5e8ee), textWidth - bulletIndent));
+                                          warmCream, textWidth - bulletIndent));
             height += points.back().getHeight() + gap;
         }
 
@@ -72,13 +200,14 @@ public:
 
     void paint (juce::Graphics& g) override
     {
+        g.fillAll (panelColour);
         float y = padding;
         title.draw (g, { padding, y, textWidth, title.getHeight() });
         y += title.getHeight() + gap;
 
         for (const auto& point : points)
         {
-            g.setColour (juce::Colour (0xff7aa2ff));
+            g.setColour (coral);
             g.fillEllipse (padding + 2.0f, y + 6.0f, 5.0f, 5.0f);
             point.draw (g, { padding + bulletIndent, y, textWidth - bulletIndent, point.getHeight() });
             y += point.getHeight() + gap;
@@ -107,12 +236,12 @@ ChordMidiKeyboard::ChordMidiKeyboard (juce::MidiKeyboardState& state)
     setScrollButtonsVisible (false);
     setWantsKeyboardFocus (false);
     setVelocity (0.8f, false);
-    setColour (whiteNoteColourId, juce::Colour (0xfff1f3f6));
-    setColour (blackNoteColourId, juce::Colour (0xff101319));
-    setColour (keySeparatorLineColourId, juce::Colour (0xff596171));
-    setColour (mouseOverKeyOverlayColourId, juce::Colour (0x552563eb));
-    setColour (keyDownOverlayColourId, juce::Colour (0xaa2563eb));
-    setColour (textLabelColourId, juce::Colour (0xff1b1e26));
+    setColour (whiteNoteColourId, warmCream);
+    setColour (blackNoteColourId, darkTeal);
+    setColour (keySeparatorLineColourId, midTeal);
+    setColour (mouseOverKeyOverlayColourId, mint.withAlpha (0.35f));
+    setColour (keyDownOverlayColourId, coral.withAlpha (0.72f));
+    setColour (textLabelColourId, darkTeal);
 }
 
 void ChordMidiKeyboard::showChordPlayback (const std::array<int, 3>& notes)
@@ -186,21 +315,21 @@ void ChordMidiKeyboard::drawWhiteNote (int midiNoteNumber, juce::Graphics& g,
     g.setColour (juce::Colour (0x55000000));
     g.fillPath (keyShape, juce::AffineTransform::translation (0.0f, 1.0f));
 
-    auto fill = juce::Colour (0xfff1f3f6);
+    auto fill = warmCream;
     if (isDown || isPlaybackNote (midiNoteNumber))
-        fill = fill.interpolatedWith (accentBlue, 0.34f);
+        fill = coral;
     else if (isOver)
-        fill = fill.interpolatedWith (accentBlue, 0.12f);
+        fill = fill.interpolatedWith (midTeal, 0.12f);
 
     g.setColour (fill);
     g.fillPath (keyShape);
-    g.setColour (juce::Colour (0xffd4d9e2));
+    g.setColour (softTeal);
     g.strokePath (keyShape, juce::PathStrokeType (1.0f));
 
     if (isDown || isPlaybackNote (midiNoteNumber))
     {
         const auto label = juce::String::fromUTF8 (chords::noteName (midiNoteNumber % 12).c_str());
-        g.setColour (textColour);
+        g.setColour (darkTeal);
         g.setFont (juce::FontOptions (juce::jmin (15.0f, getKeyWidth() * 0.34f)).withStyle ("Bold"));
         g.drawText (label, area.withTrimmedBottom (7.0f), juce::Justification::centredBottom, false);
     }
@@ -218,23 +347,51 @@ void ChordMidiKeyboard::drawBlackNote (int midiNoteNumber, juce::Graphics& g,
     keyShape.addRoundedRectangle (key.getX(), key.getY(), key.getWidth(), key.getHeight(),
                                   cornerRadius, cornerRadius, false, false, true, true);
 
-    auto fill = juce::Colour (0xff101319);
+    auto fill = darkTeal;
     if (isDown || isPlaybackNote (midiNoteNumber))
-        fill = fill.interpolatedWith (accentBlue, 0.55f);
+        fill = teal;
     else if (isOver)
-        fill = fill.interpolatedWith (accentBlue, 0.24f);
+        fill = fill.interpolatedWith (midTeal, 0.24f);
 
     g.setColour (juce::Colour (0x66000000));
     g.fillPath (keyShape, juce::AffineTransform::translation (0.0f, 1.5f));
     g.setColour (fill);
     g.fillPath (keyShape);
-    g.setColour (juce::Colour (0xff333946));
+    g.setColour (midTeal);
     g.strokePath (keyShape, juce::PathStrokeType (0.8f));
 
-    juce::ignoreUnused (midiNoteNumber, noteFillColour);
+    if (isDown || isPlaybackNote (midiNoteNumber))
+    {
+        const auto label = juce::String::fromUTF8 (chords::noteName (midiNoteNumber % 12).c_str());
+        g.setColour (warmCream);
+        g.setFont (juce::FontOptions (juce::jmin (11.0f, key.getWidth() * 0.34f)).withStyle ("Bold"));
+        g.drawText (label, key.withTrimmedBottom (3.0f), juce::Justification::centredBottom, false);
+    }
+
+    juce::ignoreUnused (noteFillColour);
 }
 
+void RoundedKeySelectorLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& button,
+                                                          const juce::Colour& backgroundColour,
+                                                          bool isMouseOverButton, bool isButtonDown)
+{
+    const auto bounds = button.getLocalBounds().toFloat().reduced (1.0f);
+    const auto colour = isButtonDown ? backgroundColour.darker (0.12f)
+                      : isMouseOverButton ? backgroundColour.interpolatedWith (coral, 0.18f)
+                                          : backgroundColour;
+    const float corner = juce::jmin (9.0f, bounds.getHeight() * 0.28f);
 
+    g.setColour (darkTeal.withAlpha (isButtonDown ? 0.25f : 0.48f));
+    g.fillRoundedRectangle (bounds.translated (0.0f, isButtonDown ? 3.0f : 2.0f), corner);
+    g.setColour (colour);
+    g.fillRoundedRectangle (bounds, corner);
+
+    if (isMouseOverButton || isButtonDown)
+    {
+        g.setColour ((isButtonDown ? coralLight : warmCream).withAlpha (isButtonDown ? 0.72f : 0.5f));
+        g.drawRoundedRectangle (bounds.reduced (0.5f), corner, isButtonDown ? 1.8f : 1.2f);
+    }
+}
 
 void RoundedKeySelectorLookAndFeel::drawComboBox (juce::Graphics& g, int width, int height,
                                                    bool isButtonDown, int buttonX, int buttonY,
@@ -242,14 +399,18 @@ void RoundedKeySelectorLookAndFeel::drawComboBox (juce::Graphics& g, int width, 
 {
     juce::ignoreUnused (buttonX, buttonY, buttonW, buttonH);
 
+    const bool isMouseOver = box.isMouseOver (true);
+    g.addTransform (juce::AffineTransform::translation (0.0f, isButtonDown ? 1.5f
+                                                                          : isMouseOver ? 0.5f : 0.0f));
     const auto bounds = juce::Rectangle<float> (0.5f, 0.5f,
                                                  (float) width - 1.0f, (float) height - 1.0f);
     const float cornerRadius = (float) height * 0.42f;
     g.setColour (box.findColour (juce::ComboBox::backgroundColourId)
-                     .interpolatedWith (juce::Colour (0xff252a34), isButtonDown ? 0.8f : 0.0f));
+                     .interpolatedWith (coral, isButtonDown ? 0.16f : isMouseOver ? 0.1f : 0.0f));
     g.fillRoundedRectangle (bounds, cornerRadius);
-    g.setColour (box.findColour (juce::ComboBox::outlineColourId));
-    g.drawRoundedRectangle (bounds, cornerRadius, 1.3f);
+    g.setColour (isMouseOver || isButtonDown ? coralLight.withAlpha (0.72f)
+                                              : box.findColour (juce::ComboBox::outlineColourId));
+    g.drawRoundedRectangle (bounds, cornerRadius, isButtonDown ? 1.8f : isMouseOver ? 1.5f : 1.3f);
 
     const auto centreX = (float) width - (float) height * 0.62f;
     const auto centreY = (float) height * 0.5f;
@@ -279,19 +440,24 @@ ChordSuggesterAudioProcessorEditor::ChordSuggesterAudioProcessorEditor (ChordSug
     keySelector.setSelectedId (keyRoot + 1, juce::dontSendNotification);
     keySelector.setJustificationType (juce::Justification::centred);
     keySelector.setLookAndFeel (&keySelectorLookAndFeel);
+    keySelectorLookAndFeel.setColour (juce::PopupMenu::backgroundColourId, headerColour);
+    keySelectorLookAndFeel.setColour (juce::PopupMenu::textColourId, warmCream);
+    keySelectorLookAndFeel.setColour (juce::PopupMenu::highlightedBackgroundColourId, mint);
+    keySelectorLookAndFeel.setColour (juce::PopupMenu::highlightedTextColourId, darkTeal);
     keySelector.setColour (juce::ComboBox::backgroundColourId, headerColour);
-    keySelector.setColour (juce::ComboBox::textColourId, juce::Colour (0xfff1f3f6));
-    keySelector.setColour (juce::ComboBox::outlineColourId, juce::Colour (0xff394150));
-    keySelector.setColour (juce::ComboBox::arrowColourId, juce::Colour (0xfff1f3f6));
+    keySelector.setColour (juce::ComboBox::textColourId, warmCream);
+    keySelector.setColour (juce::ComboBox::outlineColourId, midTeal);
+    keySelector.setColour (juce::ComboBox::arrowColourId, warmCream);
     keySelector.onChange = [this] { updateKeySelection(); };
     addAndMakeVisible (keySelector);
 
     moreChords.setComponentID ("moreChords");
     moreChords.setTextWhenNothingSelected (juce::String::fromUTF8 ("More chords\xe2\x80\xa6"));
+    moreChords.setLookAndFeel (&keySelectorLookAndFeel);
     moreChords.setColour (juce::ComboBox::backgroundColourId, headerColour);
-    moreChords.setColour (juce::ComboBox::textColourId, juce::Colour (0xfff1f3f6));
-    moreChords.setColour (juce::ComboBox::outlineColourId, juce::Colour (0xff394150));
-    moreChords.setColour (juce::ComboBox::arrowColourId, juce::Colour (0xfff1f3f6));
+    moreChords.setColour (juce::ComboBox::textColourId, warmCream);
+    moreChords.setColour (juce::ComboBox::outlineColourId, midTeal);
+    moreChords.setColour (juce::ComboBox::arrowColourId, warmCream);
     moreChords.onChange = [this] { chooseMoreChord(); };
     addAndMakeVisible (moreChords);
     updateMoreChords();
@@ -303,15 +469,27 @@ ChordSuggesterAudioProcessorEditor::ChordSuggesterAudioProcessorEditor (ChordSug
     for (auto* button : { &generateButton, &playButton, &backingButton, &loopButton, &resetButton, &clearNotesButton })
     {
         addAndMakeVisible (*button);
-        button->setColour (juce::TextButton::buttonColourId, juce::Colour (0xff20252d));
-        button->setColour (juce::TextButton::buttonOnColourId, juce::Colour (0xff2563eb));
+        button->setLookAndFeel (&keySelectorLookAndFeel);
+        button->setColour (juce::TextButton::buttonColourId, teal);
+        button->setColour (juce::TextButton::buttonOnColourId, coral);
+        button->setColour (juce::TextButton::textColourOffId, warmCream);
+        button->setColour (juce::TextButton::textColourOnId, darkTeal);
     }
-    playButton.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff2563eb));
+    playButton.setColour (juce::TextButton::buttonColourId, coral);
+    playButton.setColour (juce::TextButton::textColourOffId, darkTeal);
     backingButton.setClickingTogglesState (true);
     loopButton.setClickingTogglesState (true);
     backingButton.onClick = [this] { audioProcessor.setMelodyBackingEnabled (backingButton.getToggleState()); };
     loopButton.onClick = [this] { stopMelody(); };
     for (auto* box : { &scaleChoice, &barsChoice, &timingChoice }) addAndMakeVisible (*box);
+    for (auto* box : { &scaleChoice, &barsChoice, &timingChoice })
+    {
+        box->setLookAndFeel (&keySelectorLookAndFeel);
+        box->setColour (juce::ComboBox::backgroundColourId, headerColour);
+        box->setColour (juce::ComboBox::textColourId, warmCream);
+        box->setColour (juce::ComboBox::outlineColourId, midTeal);
+        box->setColour (juce::ComboBox::arrowColourId, warmCream);
+    }
     scaleChoice.setComponentID ("scale");
     barsChoice.setComponentID ("bars");
     timingChoice.setComponentID ("timing");
@@ -327,8 +505,8 @@ ChordSuggesterAudioProcessorEditor::ChordSuggesterAudioProcessorEditor (ChordSug
     };
     progressionDisplay.setMultiLine (false);
     progressionDisplay.setReadOnly (true);
-    progressionDisplay.setColour (juce::TextEditor::backgroundColourId, juce::Colour (0xff20252d));
-    progressionDisplay.setColour (juce::TextEditor::textColourId, juce::Colours::white);
+    progressionDisplay.setColour (juce::TextEditor::backgroundColourId, panelColour);
+    progressionDisplay.setColour (juce::TextEditor::textColourId, warmCream);
     scaleChoice.addItem ("Estimated scale", 1);
     for (int mode = 0; mode < 2; ++mode)
         for (int root = 0; root < 12; ++root)
@@ -392,10 +570,13 @@ ChordSuggesterAudioProcessorEditor::ChordSuggesterAudioProcessorEditor (ChordSug
     for (auto* button : { &undoChordButton, &resetChordsButton, &playProgressionButton })
     {
         addAndMakeVisible (*button);
-        button->setColour (juce::TextButton::buttonColourId, juce::Colour (0xff20252d));
+        button->setLookAndFeel (&keySelectorLookAndFeel);
+        button->setColour (juce::TextButton::buttonColourId, teal);
+        button->setColour (juce::TextButton::textColourOffId, warmCream);
     }
     undoChordButton.onClick = [this] { undoLastChord(); };
-    playProgressionButton.setColour (juce::TextButton::buttonColourId, accentBlue);
+    playProgressionButton.setColour (juce::TextButton::buttonColourId, coral);
+    playProgressionButton.setColour (juce::TextButton::textColourOffId, darkTeal);
     playProgressionButton.onClick = [this] { toggleProgressionPlayback(); };
     resetChordsButton.onClick = [this] { progression.reset (currentChord); refreshMelody(); };
     refreshMelody();
@@ -417,6 +598,13 @@ ChordSuggesterAudioProcessorEditor::~ChordSuggesterAudioProcessorEditor()
         explanationBox->setVisible (false);
     }
     keySelector.setLookAndFeel (nullptr);
+    moreChords.setLookAndFeel (nullptr);
+    scaleChoice.setLookAndFeel (nullptr);
+    barsChoice.setLookAndFeel (nullptr);
+    timingChoice.setLookAndFeel (nullptr);
+    for (auto* button : { &generateButton, &playButton, &backingButton, &loopButton, &resetButton,
+                          &clearNotesButton, &undoChordButton, &resetChordsButton, &playProgressionButton })
+        button->setLookAndFeel (nullptr);
     audioProcessor.stopPreview();
 }
 
@@ -574,7 +762,7 @@ melody::Scale ChordSuggesterAudioProcessorEditor::selectedScale() const
 
 void ChordSuggesterAudioProcessorEditor::paintMelody (juce::Graphics& g)
 {
-    g.setColour (juce::Colour (0xffa7afbc));
+    g.setColour (secondaryText);
     g.setFont (juce::FontOptions (17.0f));
     g.drawText ("Suggested melody", 24, 89, 175, 30, juce::Justification::centredLeft);
     g.drawText ("Bars", getWidth() - 375, 89, 45, 30, juce::Justification::centredLeft);
@@ -589,11 +777,11 @@ void ChordSuggesterAudioProcessorEditor::paintMelody (juce::Graphics& g)
     bool outside = false;
     for (const auto& chord : progression.all())
         for (int note : chord.notes) outside = outside || ! selectedScale().contains (note);
-    g.setColour (outside ? juce::Colour (0xffffca80) : juce::Colour (0xffa7afbc));
+    g.setColour (outside ? coral : secondaryText);
     g.drawText (outside ? "Some chord notes fall outside this scale. Generated notes stay in scale; edits may use any row."
                         : "Shaded rows are outside the scale. Drag notes to move them; drag their right edge to resize.",
                 24, getHeight() - 40, getWidth() - 48, 20, juce::Justification::centredLeft);
-    g.setColour (juce::Colour (0xffa7afbc));
+    g.setColour (secondaryText);
     g.drawFittedText ("Click or drag to draw | Right-click or Delete removes | Overlaps rejected | 120 BPM, 4/4 | Shift+wheel scrolls horizontally",
                       410, getHeight() - 84, getWidth() - 435, 38, juce::Justification::centredLeft, 2);
 }
@@ -723,17 +911,17 @@ void ChordSuggesterAudioProcessorEditor::paintProgression (juce::Graphics& g)
 
     // The small "Explain why" tag: explains what the Roman numerals on the chips mean.
     const auto helpTag = numeralsHelpBounds().toFloat();
-    g.setColour (juce::Colours::white.withAlpha (hoveredNumeralsHelp ? 0.22f : 0.10f));
+    g.setColour (coral.withAlpha (hoveredNumeralsHelp ? 0.3f : 0.18f));
     g.fillRoundedRectangle (helpTag, 6.0f);
-    g.setColour (juce::Colours::white.withAlpha (0.35f));
+    g.setColour (coral.withAlpha (0.72f));
     g.drawRoundedRectangle (helpTag.reduced (0.5f), 6.0f, 1.0f);
-    g.setColour (juce::Colour (0xfff1f3f6));
+    g.setColour (coral);
     g.setFont (juce::FontOptions (12.0f).withStyle ("Bold"));
     g.drawText ("Explain why", helpTag, juce::Justification::centred);
 
     g.setColour (panelColour);
     g.fillRoundedRectangle (area.toFloat(), 12.0f);
-    g.setColour (juce::Colour (0xff353d4b));
+    g.setColour (softTeal);
     g.drawRoundedRectangle (area.toFloat(), 12.0f, 1.0f);
 
     // Chords as chips with arrows between, wrapping onto new lines. If they don't all
@@ -784,14 +972,14 @@ void ChordSuggesterAudioProcessorEditor::paintProgression (juce::Graphics& g)
     for (size_t i = 0; i < chips.size(); ++i)
     {
         const auto& chip = chips[i];
-        g.setColour (chip.current ? accentBlue : juce::Colour (0xff2b3240));
+        g.setColour (chip.current ? coral : teal);
         g.fillRoundedRectangle (chip.bounds.toFloat(), 8.0f);
         if (chip.index >= 0 && chip.index == progressionSounding)
         {
-            g.setColour (juce::Colour (0xfff8cc6a));   // the same gold as the melody playhead
+            g.setColour (coralLight);
             g.drawRoundedRectangle (chip.bounds.toFloat().reduced (1.0f), 8.0f, 2.5f);
         }
-        g.setColour (juce::Colour (0xfff1f3f6));
+        g.setColour (chip.current ? darkTeal : warmCream);
         if (chip.numeral.isEmpty())
         {
             g.drawText (chip.text, chip.bounds, juce::Justification::centred);
@@ -802,7 +990,7 @@ void ChordSuggesterAudioProcessorEditor::paintProgression (juce::Graphics& g)
             const auto textArea = chip.bounds.reduced (11, 0);
             g.setFont (chipFont);
             g.drawText (chip.text, textArea, juce::Justification::centredLeft);
-            g.setColour (juce::Colour (0xfff1f3f6).withAlpha (chip.current ? 0.85f : 0.62f));
+            g.setColour (chip.current ? darkTeal.withAlpha (0.9f) : warmCream.withAlpha (0.86f));
             g.setFont (numeralFont);
             g.drawText (chip.numeral, textArea, juce::Justification::centredRight);
             g.setFont (chipFont);
@@ -899,18 +1087,41 @@ void ChordSuggesterAudioProcessorEditor::showNumeralsHelp()
 //==============================================================================
 void ChordSuggesterAudioProcessorEditor::paint (juce::Graphics& g)
 {
-    g.fillAll (juce::Colour (0xff14171c));
-    g.setColour (juce::Colours::white);
-    g.setFont (juce::FontOptions (24.0f, juce::Font::bold));
-    g.drawText ("ChordSuggester", 24, 18, 235, 36, juce::Justification::centredLeft);
-    g.setColour (juce::Colour (0xff343a44));
+    drawGrainyGradient (g, getLocalBounds());
+
+    g.setColour (headerColour.withAlpha (0.96f));
+    g.fillRect (0, 0, getWidth(), headerHeight);
+
+    juce::Path brandMark;
+    for (int point = 0; point < 8; ++point)
+    {
+        const float angle = -juce::MathConstants<float>::halfPi
+                          + (float) point * juce::MathConstants<float>::pi / 4.0f;
+        const float radius = point % 2 == 0 ? 12.0f : 4.5f;
+        const juce::Point<float> vertex (41.0f + std::cos (angle) * radius,
+                                         35.0f + std::sin (angle) * radius);
+        if (point == 0)
+            brandMark.startNewSubPath (vertex);
+        else
+            brandMark.lineTo (vertex);
+    }
+    brandMark.closeSubPath();
+    g.setColour (coral);
+    g.fillPath (brandMark);
+    g.setColour (warmCream);
+    g.setFont (juce::FontOptions (18.0f, juce::Font::bold));
+    g.drawText ("EZ Chords and Harmony", 61, 18, 211, 36, juce::Justification::centredLeft);
+    g.setColour (secondaryText);
+    g.setFont (juce::FontOptions (9.5f).withStyle ("Bold"));
+    g.drawText ("HARMONY / IN MOTION", 62, 51, 190, 12, juce::Justification::centredLeft);
+    g.setColour (midTeal);
     g.drawHorizontalLine (71, 0.0f, float (getWidth()));
-    g.setColour (juce::Colour (0xff2563eb));
+    g.setColour (coral);
     const auto activeTab = showingMelody ? melodyTab.getBounds() : chordsTab.getBounds();
     g.fillRect (activeTab.getX(), 68, activeTab.getWidth(), 4);
     if (showingMelody)
     {
-        g.setColour (juce::Colour (0xffa7afbc));
+        g.setColour (secondaryText);
         g.setFont (juce::FontOptions (16.0f));
         g.drawText (scaleChoice.getSelectedId() == 1 ? "Estimated key" : "Scale override",
                     getWidth() - 415, 22, 115, 32, juce::Justification::centredLeft);
@@ -919,7 +1130,7 @@ void ChordSuggesterAudioProcessorEditor::paint (juce::Graphics& g)
     }
 
 
-    g.setColour (juce::Colour (0xff303540));
+    g.setColour (midTeal);
     g.drawVerticalLine (leftColumnWidth, float (headerHeight), float (getHeight()));
     g.setColour (secondaryText);
     g.setFont (juce::FontOptions (16.0f));
@@ -930,11 +1141,14 @@ void ChordSuggesterAudioProcessorEditor::paint (juce::Graphics& g)
                 juce::Justification::centredLeft);
 
     const auto current = currentChordBounds();
-    g.setColour (midiDragHovering ? juce::Colour (0xff253348) : juce::Colour (0xff222630));
+    g.setColour (midiDragHovering ? teal.brighter (0.12f) : teal);
     g.fillRoundedRectangle (current.toFloat(), 13.0f);
-    g.setColour (midiDragHovering ? accentBlue : juce::Colour (0xff444c5c));
+    g.setColour (midiDragHovering ? coral : softTeal);
     g.drawRoundedRectangle (current.toFloat(), 13.0f, midiDragHovering ? 2.5f : 1.5f);
-    g.setColour (juce::Colour (0xfff1f3f6));
+    g.setColour (coral);
+    g.fillRoundedRectangle ((float) current.getX() + 1.0f, (float) current.getY() + 15.0f,
+                            3.0f, 30.0f, 1.5f);
+    g.setColour (warmCream);
     g.setFont (juce::FontOptions (44.0f).withStyle ("Bold"));
     g.drawText (currentChord.name, current.withTrimmedTop (28).withHeight (56),
                 juce::Justification::centred);
@@ -950,15 +1164,15 @@ void ChordSuggesterAudioProcessorEditor::paint (juce::Graphics& g)
                 juce::Justification::centred);
 
     const auto transition = transitionBounds();
-    g.setColour (previewedChord ? juce::Colour (0xff253348) : panelColour);
+    g.setColour (previewedChord ? teal : panelColour);
     g.fillRoundedRectangle (transition.toFloat(), 12.0f);
-    g.setColour (juce::Colour (0xff353d4b));
+    g.setColour (softTeal);
     g.drawRoundedRectangle (transition.toFloat(), 12.0f, 1.0f);
     g.setColour (secondaryText);
     g.setFont (juce::FontOptions (15.0f).withStyle ("Bold"));
     g.drawText ("Preview next", transition.withTrimmedTop (5).withHeight (22),
                 juce::Justification::centred);
-    g.setColour (previewedChord ? juce::Colour (0xfff1f3f6) : secondaryText);
+    g.setColour (warmCream);
     g.setFont (juce::FontOptions (25.0f));
     const auto transitionLabel = juce::String (currentChord.name)
         + juce::String::fromUTF8 (" \xe2\x86\x92 ")
@@ -979,9 +1193,6 @@ void ChordSuggesterAudioProcessorEditor::paint (juce::Graphics& g)
     g.setFont (juce::FontOptions (17.0f).withStyle ("Bold"));
     g.drawText ("MIDI keyboard", 24, keyboardArea.getY() - 30, leftColumnWidth - 48, 24,
                 juce::Justification::centredLeft);
-    g.setColour (juce::Colour (0xff353d4b));
-    g.drawRoundedRectangle (keyboardArea.toFloat(), 8.0f, 1.0f);
-
     g.setColour (secondaryText);
     g.setFont (juce::FontOptions (18.0f).withStyle ("Bold"));
     g.drawText ("Chords to try next", leftColumnWidth + 28, 78,
@@ -991,14 +1202,27 @@ void ChordSuggesterAudioProcessorEditor::paint (juce::Graphics& g)
     {
         const auto& suggestion = suggestions[(size_t) i];
         const auto row = rowBounds (i);
-        auto colour = dramaticGray.interpolatedWith (accentBlue, suggestion.safety);
+        auto colour = safetyRed.interpolatedWith (safetyBlue, suggestion.safety);
         if (i == hoveredRow)
-            colour = colour.brighter (0.18f);
+            colour = colour.brighter (0.08f);
 
+        const float rowOffset = dragRow == i ? 2.0f : hoveredRow == i ? 1.0f : 0.0f;
+        g.saveState();
+        g.addTransform (juce::AffineTransform::translation (0.0f, rowOffset));
+        g.setColour (darkTeal.withAlpha (dragRow == i ? 0.4f : 0.24f));
+        g.fillRoundedRectangle (row.toFloat().translated (0.0f, 2.0f - rowOffset), 12.0f);
         g.setColour (colour);
         g.fillRoundedRectangle (row.toFloat(), 12.0f);
+        if (i == hoveredRow)
+        {
+            g.setColour (coralLight.withAlpha (0.72f));
+            g.drawRoundedRectangle (row.toFloat().reduced (0.75f), 12.0f, 1.5f);
+            g.setColour (coral.withAlpha (0.88f));
+            g.fillRoundedRectangle ((float) row.getX() + 1.0f, (float) row.getY() + 11.0f,
+                                    3.0f, (float) row.getHeight() - 22.0f, 1.5f);
+        }
 
-        g.setColour (juce::Colours::white);
+        g.setColour (warmCream);
         g.setFont (juce::FontOptions (25.0f).withStyle ("Bold"));
         g.drawText (suggestion.chord.name, row.withTrimmedLeft (20).withWidth (92),
                     juce::Justification::centredLeft);
@@ -1019,17 +1243,18 @@ void ChordSuggesterAudioProcessorEditor::paint (juce::Graphics& g)
 
         // The "Explain why" button. Clicking it is handled in mouseDown.
         const auto explainButton = explainButtonBounds (i).toFloat();
-        g.setColour (juce::Colours::white.withAlpha (i == hoveredExplain ? 0.32f : 0.16f));
+        g.setColour (i == hoveredExplain ? goldenYellow.brighter (0.05f) : goldenYellow);
         g.fillRoundedRectangle (explainButton, 6.0f);
-        g.setColour (juce::Colours::white.withAlpha (0.45f));
+        g.setColour (darkTeal.withAlpha (0.5f));
         g.drawRoundedRectangle (explainButton.reduced (0.5f), 6.0f, 1.0f);
-        g.setColour (juce::Colours::white);
+        g.setColour (darkTeal);
         g.setFont (juce::FontOptions (13.0f).withStyle ("Bold"));
         g.drawText ("Explain why", explainButton, juce::Justification::centred);
 
         g.setFont (juce::FontOptions (15.0f).withStyle ("Bold"));
         g.drawText (safetyDescription (suggestion.safety), row.getRight() - 112, row.getY(),
                     92, row.getHeight(), juce::Justification::centredRight);
+        g.restoreState();
     }
 
     g.setColour (secondaryText);
@@ -1048,7 +1273,7 @@ void ChordSuggesterAudioProcessorEditor::paint (juce::Graphics& g)
     for (int i = 0; i < 6; ++i)
     {
         const float safety = 1.0f - (float) i / 5.0f;
-        g.setColour (dramaticGray.interpolatedWith (accentBlue, safety));
+        g.setColour (safetyRed.interpolatedWith (safetyBlue, safety));
         g.fillRoundedRectangle ((float) (legendX + i * (segmentWidth + segmentGap)),
                                 (float) legendY, (float) segmentWidth, 10.0f, 4.0f);
     }
@@ -1063,19 +1288,20 @@ void ChordSuggesterAudioProcessorEditor::paint (juce::Graphics& g)
         for (const auto target : { currentChordBounds(), progressionBounds() })
         {
             const bool hovered = target.contains (dragPosition);
-            g.setColour (accentBlue.withAlpha (hovered ? 0.22f : 0.08f));
+            g.setColour (warmCream.withAlpha (hovered ? 0.16f : 0.06f));
             g.fillRoundedRectangle (target.toFloat(), 12.0f);
-            g.setColour (accentBlue.withAlpha (hovered ? 1.0f : 0.6f));
+            g.setColour (warmCream.withAlpha (hovered ? 0.82f : 0.46f));
             g.drawRoundedRectangle (target.toFloat().reduced (1.0f), 12.0f, hovered ? 3.0f : 2.0f);
         }
 
         const auto& dragged = suggestions[(size_t) dragRow];
         const auto ghost = juce::Rectangle<float> (110.0f, 48.0f).withCentre (dragPosition.toFloat());
-        g.setColour (dramaticGray.interpolatedWith (accentBlue, dragged.safety).withAlpha (0.92f));
+        g.setColour (safetyRed.interpolatedWith (safetyBlue, dragged.safety).withAlpha (0.96f));
         g.fillRoundedRectangle (ghost, 10.0f);
-        g.setColour (juce::Colours::white.withAlpha (overTarget ? 1.0f : 0.5f));
+        g.setColour (warmCream.withAlpha (overTarget ? 1.0f : 0.7f));
         g.drawRoundedRectangle (ghost, 10.0f, 1.5f);
         g.setFont (juce::FontOptions (22.0f).withStyle ("Bold"));
+        g.setColour (warmCream);
         g.drawText (dragged.chord.name, ghost.toNearestInt(), juce::Justification::centred);
     }
 }
