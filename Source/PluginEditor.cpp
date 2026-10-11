@@ -297,6 +297,7 @@ ChordSuggesterAudioProcessorEditor::ChordSuggesterAudioProcessorEditor (ChordSug
     updateMoreChords();
 
     addAndMakeVisible (midiKeyboard);
+    setWantsKeyboardFocus (true);   // Delete removes a selected progression chord
 
     addAndMakeVisible (chordsTab);
     addAndMakeVisible (melodyTab);
@@ -497,6 +498,7 @@ void ChordSuggesterAudioProcessorEditor::invalidatePhrase (bool stopPlayback)
 
 void ChordSuggesterAudioProcessorEditor::refreshMelody (bool stopPlayback)
 {
+    selectedChip = -1;
     scaleEstimate = melody::estimate (progression.all());
     const bool usingEstimate = scaleChoice.getSelectedId() <= 1;
     scaleChoice.changeItemText (1, juce::String (scaleEstimate.best.name()));
@@ -736,49 +738,10 @@ void ChordSuggesterAudioProcessorEditor::paintProgression (juce::Graphics& g)
     g.setColour (juce::Colour (0xff353d4b));
     g.drawRoundedRectangle (area.toFloat(), 12.0f, 1.0f);
 
-    // Chords as chips with arrows between, wrapping onto new lines. If they don't all
-    // fit, the oldest are left out and a "..." chip stands in for them.
     const juce::Font chipFont (juce::FontOptions (15.0f).withStyle ("Bold"));
-    // Each chip also shows the chord's Roman numeral in the chosen key (I, ii, V...), in a
-    // lighter style after the name. It follows the Key menu, so it updates when the key changes.
     const juce::Font numeralFont (juce::FontOptions (13.0f));
-    const int numeralGap = 7;
-    const auto& all = progression.all();
-    const auto inner = area.reduced (12, 10);
-    const int chipHeight = 28, lineGap = 8, arrowWidth = 20;
-    const auto ellipsis = juce::String::fromUTF8 ("\xe2\x80\xa6");
-
-    struct Chip { juce::String text, numeral; juce::Rectangle<int> bounds; bool current; int index; };
-    const auto layout = [&] (size_t first, std::vector<Chip>& chips)
-    {
-        chips.clear();
-        int x = inner.getX(), y = inner.getY();
-        struct Item { juce::String text, numeral; bool current; int index; };
-        std::vector<Item> items;
-        if (first > 0) items.push_back ({ ellipsis, {}, false, -1 });
-        for (size_t i = first; i < all.size(); ++i)
-            items.push_back ({ juce::String (all[i].name),
-                               juce::String::fromUTF8 (chords::romanNumeral (all[i], keyRoot).c_str()),
-                               i + 1 == all.size(), (int) i });
-
-        for (size_t i = 0; i < items.size(); ++i)
-        {
-            int width = juce::roundToInt (juce::GlyphArrangement::getStringWidth (chipFont, items[i].text)) + 22;
-            if (items[i].numeral.isNotEmpty())
-                width += numeralGap + juce::roundToInt (juce::GlyphArrangement::getStringWidth (numeralFont, items[i].numeral));
-            if (x > inner.getX() && x + width > inner.getRight())
-            {
-                x = inner.getX();
-                y += chipHeight + lineGap;
-            }
-            chips.push_back ({ items[i].text, items[i].numeral, { x, y, width, chipHeight }, items[i].current, items[i].index });
-            x += width + arrowWidth;
-        }
-        return chips.empty() || chips.back().bounds.getBottom() <= inner.getBottom();
-    };
-
-    std::vector<Chip> chips;
-    for (size_t first = 0; first < all.size() && ! layout (first, chips); ++first) {}
+    const int arrowWidth = 20;
+    const auto chips = progressionChips();
 
     g.setFont (chipFont);
     for (size_t i = 0; i < chips.size(); ++i)
@@ -786,6 +749,11 @@ void ChordSuggesterAudioProcessorEditor::paintProgression (juce::Graphics& g)
         const auto& chip = chips[i];
         g.setColour (chip.current ? accentBlue : juce::Colour (0xff2b3240));
         g.fillRoundedRectangle (chip.bounds.toFloat(), 8.0f);
+        if (chip.index >= 0 && chip.index == selectedChip)
+        {
+            g.setColour (juce::Colours::white);
+            g.drawRoundedRectangle (chip.bounds.toFloat().reduced (1.0f), 8.0f, 2.0f);
+        }
         if (chip.index >= 0 && chip.index == progressionSounding)
         {
             g.setColour (juce::Colour (0xfff8cc6a));   // the same gold as the melody playhead
@@ -813,9 +781,128 @@ void ChordSuggesterAudioProcessorEditor::paintProgression (juce::Graphics& g)
         {
             g.setColour (secondaryText);
             g.drawText (juce::String::fromUTF8 ("\xe2\x86\x92"), chip.bounds.getRight(), chip.bounds.getY(),
-                        arrowWidth, chipHeight, juce::Justification::centred);
+                        arrowWidth, chip.bounds.getHeight(), juce::Justification::centred);
         }
     }
+
+    // The selected chip gets a small x for deleting it (not when it's the only chord left).
+    for (const auto& chip : chips)
+        if (chip.index >= 0 && chip.index == selectedChip && progression.all().size() > 1)
+        {
+            const auto cross = chipDeleteBounds (chip).toFloat();
+            g.setColour (juce::Colour (0xffe5484d));
+            g.fillEllipse (cross);
+            g.setColour (juce::Colours::white);
+            const auto c = cross.reduced (5.5f);
+            g.drawLine (c.getX(), c.getY(), c.getRight(), c.getBottom(), 1.8f);
+            g.drawLine (c.getRight(), c.getY(), c.getX(), c.getBottom(), 1.8f);
+        }
+
+    g.setColour (secondaryText);
+    g.setFont (juce::FontOptions (12.0f));
+    g.drawText (selectedChip >= 0
+                    ? juce::String::fromUTF8 ("Drag a suggestion onto it to replace \xc2\xb7 x or Delete removes")
+                    : juce::String ("Click a chord to change or remove it"),
+                area.reduced (12, 6).removeFromBottom (18), juce::Justification::centredLeft);
+}
+
+std::vector<ChordSuggesterAudioProcessorEditor::ProgressionChip> ChordSuggesterAudioProcessorEditor::progressionChips() const
+{
+    // Chords as chips with arrows between, wrapping onto new lines. If they don't all
+    // fit, the oldest are left out and a "..." chip stands in for them.
+    const juce::Font chipFont (juce::FontOptions (15.0f).withStyle ("Bold"));
+    // Each chip also shows the chord's Roman numeral in the chosen key (I, ii, V...), in a
+    // lighter style after the name. It follows the Key menu, so it updates when the key changes.
+    const juce::Font numeralFont (juce::FontOptions (13.0f));
+    const int numeralGap = 7;
+    const auto& all = progression.all();
+    // The bottom of the panel is kept for the editing hint.
+    const auto inner = progressionBounds().reduced (12, 10).withTrimmedBottom (18);
+    const int chipHeight = 28, lineGap = 8, arrowWidth = 20;
+    const auto ellipsis = juce::String::fromUTF8 ("\xe2\x80\xa6");
+
+    const auto layout = [&] (size_t first, std::vector<ProgressionChip>& chips)
+    {
+        chips.clear();
+        int x = inner.getX(), y = inner.getY();
+        struct Item { juce::String text, numeral; bool current; int index; };
+        std::vector<Item> items;
+        if (first > 0) items.push_back ({ ellipsis, {}, false, -1 });
+        for (size_t i = first; i < all.size(); ++i)
+            items.push_back ({ juce::String (all[i].name),
+                               juce::String::fromUTF8 (chords::romanNumeral (all[i], keyRoot).c_str()),
+                               i + 1 == all.size(), (int) i });
+
+        for (size_t i = 0; i < items.size(); ++i)
+        {
+            int width = juce::roundToInt (juce::GlyphArrangement::getStringWidth (chipFont, items[i].text)) + 22;
+            if (items[i].numeral.isNotEmpty())
+                width += numeralGap + juce::roundToInt (juce::GlyphArrangement::getStringWidth (numeralFont, items[i].numeral));
+            if (x > inner.getX() && x + width > inner.getRight())
+            {
+                x = inner.getX();
+                y += chipHeight + lineGap;
+            }
+            chips.push_back ({ items[i].text, items[i].numeral, { x, y, width, chipHeight }, items[i].current, items[i].index });
+            x += width + arrowWidth;
+        }
+        return chips.empty() || chips.back().bounds.getBottom() <= inner.getBottom();
+    };
+
+    std::vector<ProgressionChip> chips;
+    for (size_t first = 0; first < all.size() && ! layout (first, chips); ++first) {}
+    return chips;
+}
+
+int ChordSuggesterAudioProcessorEditor::progressionChipAt (juce::Point<int> position) const
+{
+    for (const auto& chip : progressionChips())
+        if (chip.index >= 0 && chip.bounds.contains (position))
+            return chip.index;
+    return -1;
+}
+
+juce::Rectangle<int> ChordSuggesterAudioProcessorEditor::chipDeleteBounds (const ProgressionChip& chip) const
+{
+    return juce::Rectangle<int> (18, 18).withCentre ({ chip.bounds.getRight() - 1, chip.bounds.getY() + 1 });
+}
+
+bool ChordSuggesterAudioProcessorEditor::selectedChipDeleteContains (juce::Point<int> position) const
+{
+    if (selectedChip < 0 || progression.all().size() <= 1)
+        return false;
+    for (const auto& chip : progressionChips())
+        if (chip.index == selectedChip)
+            return chipDeleteBounds (chip).expanded (2).contains (position);
+    return false;
+}
+
+void ChordSuggesterAudioProcessorEditor::deleteProgressionChord (int index)
+{
+    const bool wasLast = index == (int) progression.all().size() - 1;
+    if (index < 0 || ! progression.removeAt ((size_t) index))
+        return;
+
+    selectedChip = -1;
+    // Removing the newest chord steps back, the same as Undo: the chord before it becomes yours again.
+    if (wasLast)
+        setCurrentChord (progression.all().back());
+    refreshMelody();
+}
+
+void ChordSuggesterAudioProcessorEditor::replaceProgressionChord (int index, const chords::Chord& chord)
+{
+    if (index < 0 || ! progression.replaceAt ((size_t) index, chord))
+        return;
+
+    selectedChip = -1;
+    // Replacing the newest chord changes the chord you have, so the suggestions follow it.
+    if (index == (int) progression.all().size() - 1)
+        setCurrentChord (chord);
+    refreshMelody (false);
+    midiKeyboard.showChordPlayback (chord.notes);
+    endProgressionPlayback (false);
+    audioProcessor.previewChord (chord);
 }
 
 void ChordSuggesterAudioProcessorEditor::updateCursor (juce::Point<int> position)
@@ -823,6 +910,7 @@ void ChordSuggesterAudioProcessorEditor::updateCursor (juce::Point<int> position
     if (showingMelody) return;
     const bool clickable = rowAt (position) >= 0 || currentChordBounds().contains (position)
         || numeralsHelpBounds().contains (position)
+        || progressionChipAt (position) >= 0 || selectedChipDeleteContains (position)
         || (previewedChord.has_value() && transitionBounds().contains (position));
     setMouseCursor (clickable ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
 }
@@ -1060,17 +1148,30 @@ void ChordSuggesterAudioProcessorEditor::paint (juce::Graphics& g)
     if (draggingChord && dragRow >= 0 && dragRow < (int) suggestions.size())
     {
         const bool overTarget = isChordDropTarget (dragPosition);
+        const int overChip = progressionChipAt (dragPosition);
         for (const auto target : { currentChordBounds(), progressionBounds() })
         {
-            const bool hovered = target.contains (dragPosition);
+            const bool hovered = target.contains (dragPosition) && overChip < 0;
             g.setColour (accentBlue.withAlpha (hovered ? 0.22f : 0.08f));
             g.fillRoundedRectangle (target.toFloat(), 12.0f);
             g.setColour (accentBlue.withAlpha (hovered ? 1.0f : 0.6f));
             g.drawRoundedRectangle (target.toFloat().reduced (1.0f), 12.0f, hovered ? 3.0f : 2.0f);
         }
 
+        // Over a chord in the progression: that chord will be replaced.
+        for (const auto& chip : progressionChips())
+            if (chip.index >= 0 && chip.index == overChip)
+            {
+                g.setColour (juce::Colours::white);
+                g.drawRoundedRectangle (chip.bounds.toFloat().expanded (2.0f), 9.0f, 3.0f);
+                g.setFont (juce::FontOptions (12.0f).withStyle ("Bold"));
+                g.drawText ("Replace", chip.bounds.withY (chip.bounds.getBottom() + 3).withHeight (16).expanded (20, 0),
+                            juce::Justification::centred);
+            }
+
         const auto& dragged = suggestions[(size_t) dragRow];
-        const auto ghost = juce::Rectangle<float> (110.0f, 48.0f).withCentre (dragPosition.toFloat());
+        // Drawn up and to the right of the pointer so it doesn't hide what it's being dropped on.
+        const auto ghost = juce::Rectangle<float> (110.0f, 48.0f).withPosition (dragPosition.toFloat() + juce::Point<float> (16.0f, -58.0f));
         g.setColour (dramaticGray.interpolatedWith (accentBlue, dragged.safety).withAlpha (0.92f));
         g.fillRoundedRectangle (ghost, 10.0f);
         g.setColour (juce::Colours::white.withAlpha (overTarget ? 1.0f : 0.5f));
@@ -1126,6 +1227,30 @@ void ChordSuggesterAudioProcessorEditor::mouseDown (const juce::MouseEvent& even
     {
         showNumeralsHelp();
         return;
+    }
+
+    // "Your progression": the x on a selected chip deletes it; clicking a chip selects it and plays it.
+    if (selectedChipDeleteContains (position))
+    {
+        deleteProgressionChord (selectedChip);
+        updateCursor (position);
+        return;
+    }
+    if (const int chip = progressionChipAt (position); chip >= 0)
+    {
+        selectedChip = chip;
+        grabKeyboardFocus();
+        const auto& chord = progression.all()[(size_t) chip];
+        midiKeyboard.showChordPlayback (chord.notes);
+        endProgressionPlayback (false);
+        audioProcessor.previewChord (chord);
+        repaint();
+        return;
+    }
+    if (selectedChip >= 0)
+    {
+        selectedChip = -1;   // clicking anywhere else lets go of the selection
+        repaint();
     }
 
     const int row = rowAt (position);
@@ -1184,15 +1309,40 @@ void ChordSuggesterAudioProcessorEditor::mouseDrag (const juce::MouseEvent& even
     repaint();
 }
 
+bool ChordSuggesterAudioProcessorEditor::keyPressed (const juce::KeyPress& key)
+{
+    if (showingMelody || selectedChip < 0)
+        return false;
+
+    if (key == juce::KeyPress::deleteKey || key == juce::KeyPress::backspaceKey)
+    {
+        deleteProgressionChord (selectedChip);
+        return true;
+    }
+    if (key == juce::KeyPress::escapeKey)
+    {
+        selectedChip = -1;
+        repaint();
+        return true;
+    }
+    return false;
+}
+
 void ChordSuggesterAudioProcessorEditor::mouseUp (const juce::MouseEvent& event)
 {
     const int row = dragRow;
-    const bool dropped = draggingChord && row >= 0 && row < (int) suggestions.size()
-                         && isChordDropTarget (event.getPosition());
+    const bool hasChord = draggingChord && row >= 0 && row < (int) suggestions.size();
+    const int targetChip = hasChord ? progressionChipAt (event.getPosition()) : -1;
+    const bool dropped = hasChord && isChordDropTarget (event.getPosition());
     dragRow = -1;
     draggingChord = false;
 
-    if (dropped)
+    if (targetChip >= 0)
+    {
+        // Dropped onto a chord in the progression: swap that chord for this one.
+        replaceProgressionChord (targetChip, suggestions[(size_t) row].chord);
+    }
+    else if (dropped)
     {
         const chords::Chord chosen = suggestions[(size_t) row].chord;
         confirmChord (chosen);

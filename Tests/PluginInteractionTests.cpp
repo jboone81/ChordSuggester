@@ -251,5 +251,28 @@ int main()
     reopened.mouseDrag (dragEvent (reopened, { 700.0f, 400.0f }, rowPoint));
     reopened.mouseUp (dragEvent (reopened, { 700.0f, 400.0f }, rowPoint));
     check (history (reopened).getText() == afterDrop, "Dropping a suggestion elsewhere changes nothing");
+
+    // Editing "Your progression": click a chord to select it, Delete removes it, and dropping a
+    // suggestion onto a chord replaces it. The first chip starts at the panel's top-left corner.
+    const juce::Point<float> firstChip { 46.0f, 464.0f };
+    const auto chordCount = [&]
+    {
+        const auto text = history (reopened).getText();
+        int count = 1;
+        for (int at = text.indexOf (" -> "); at >= 0; at = text.indexOf (at + 1, " -> ")) ++count;
+        return count;
+    };
+    const int before = chordCount();
+    reopened.mouseDown (dragEvent (reopened, firstChip, firstChip));
+    reopened.mouseUp (dragEvent (reopened, firstChip, firstChip));
+    check (reopened.keyPressed (juce::KeyPress (juce::KeyPress::deleteKey)), "Delete acts on a selected chord");
+    check (chordCount() == before - 1 && ! history (reopened).getText().startsWith ("C -> "), "Delete removes the selected chord");
+    const auto firstName = history (reopened).getText().upToFirstOccurrenceOf (" -> ", false, false);
+    reopened.mouseDown (dragEvent (reopened, rowPoint, rowPoint));
+    reopened.mouseDrag (dragEvent (reopened, { 300.0f, 300.0f }, rowPoint));
+    reopened.mouseUp (dragEvent (reopened, firstChip, rowPoint));
+    check (chordCount() == before - 1 && history (reopened).getText().upToFirstOccurrenceOf (" -> ", false, false) != firstName,
+           "Dropping a suggestion on a chord replaces it");
+    check (! reopened.keyPressed (juce::KeyPress (juce::KeyPress::deleteKey)), "Nothing is selected after an edit");
     std::cout << "Plugin interaction and passthrough tests passed\n";
 }

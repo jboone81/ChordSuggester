@@ -94,6 +94,7 @@ public:
     void mouseDoubleClick (const juce::MouseEvent&) override;
     void mouseDrag (const juce::MouseEvent&) override;
     void mouseUp (const juce::MouseEvent&) override;
+    bool keyPressed (const juce::KeyPress&) override;
     void mouseMove (const juce::MouseEvent&) override;
     void mouseExit (const juce::MouseEvent&) override;
 
@@ -135,6 +136,16 @@ private:
     void undoLastChord();
     // Makes this chord the one you have and adds it to the progression (double-click or drop).
     void confirmChord (const chords::Chord& chord);
+
+    // The chords in "Your progression" as laid out on screen. index is the chord's position in
+    // progression.all(), or -1 for the "..." chip that stands in for chords that don't fit.
+    struct ProgressionChip { juce::String text, numeral; juce::Rectangle<int> bounds; bool current; int index; };
+    std::vector<ProgressionChip> progressionChips() const;
+    int progressionChipAt (juce::Point<int> position) const;          // progression index, or -1
+    juce::Rectangle<int> chipDeleteBounds (const ProgressionChip&) const;   // the small x on a selected chip
+    bool selectedChipDeleteContains (juce::Point<int> position) const;
+    void deleteProgressionChord (int index);
+    void replaceProgressionChord (int index, const chords::Chord& chord);
     // True if a dragged suggestion let go here would be selected: "Your chord" or "Your progression".
     bool isChordDropTarget (juce::Point<int> position) const;
     void toggleProgressionPlayback();
@@ -165,6 +176,7 @@ private:
     std::vector<chords::Suggestion> suggestions;
     std::optional<chords::Chord> previewedChord;
     int hoveredRow = -1;
+    int selectedChip = -1;             // the progression chord clicked for editing, or -1
     int dragRow = -1;                  // the suggestion the mouse went down on, while the button is held
     bool draggingChord = false;        // true once that press has moved far enough to be a drag
     juce::Point<int> dragPosition;
