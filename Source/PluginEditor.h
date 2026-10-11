@@ -78,13 +78,13 @@ public:
 //==============================================================================
 /**
 */
-class ChordSuggesterAudioProcessorEditor  : public juce::AudioProcessorEditor,
+class EZChordsAndHarmonyAudioProcessorEditor  : public juce::AudioProcessorEditor,
                                             public juce::FileDragAndDropTarget,
                                             private juce::Timer
 {
 public:
-    ChordSuggesterAudioProcessorEditor (ChordSuggesterAudioProcessor&);
-    ~ChordSuggesterAudioProcessorEditor() override;
+    EZChordsAndHarmonyAudioProcessorEditor (EZChordsAndHarmonyAudioProcessor&);
+    ~EZChordsAndHarmonyAudioProcessorEditor() override;
 
     //==============================================================================
     void paint (juce::Graphics&) override;
@@ -164,7 +164,7 @@ private:
 
     // This reference is provided as a quick way for your editor to
     // access the processor object that created it.
-    ChordSuggesterAudioProcessor& audioProcessor;
+    EZChordsAndHarmonyAudioProcessor& audioProcessor;
     RoundedKeySelectorLookAndFeel keySelectorLookAndFeel;
     juce::ComboBox keySelector;
     juce::ComboBox moreChords;
@@ -207,5 +207,5 @@ private:
     bool midiDragHovering = false;   // true while a MIDI file is being dragged over the window
     juce::String dropMessage;        // shown under the chord after a drop, e.g. "From clip.mid"
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ChordSuggesterAudioProcessorEditor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (EZChordsAndHarmonyAudioProcessorEditor)
 };

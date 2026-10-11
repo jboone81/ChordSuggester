@@ -116,9 +116,26 @@ int main()
 {
     juce::ScopedJuceInitialiser_GUI gui;
     testEditing();
-    ChordSuggesterAudioProcessor processor;
+    EZChordsAndHarmonyAudioProcessor processor;
+    for (const auto* tag : { "EZChordsAndHarmony", "Chord" "Suggester" })
+    {
+        juce::XmlElement state (tag);
+        state.setAttribute ("sound", int (PreviewPlayback::Sound::organ));
+        juce::MemoryBlock data;
+        juce::AudioProcessor::copyXmlToBinary (state, data);
+        processor.setPreviewSound (PreviewPlayback::Sound::soft);
+        processor.setStateInformation (data.getData(), int (data.getSize()));
+        check (processor.getPreviewSound() == PreviewPlayback::Sound::organ,
+               "Current and legacy saved state restore the sound");
+    }
+    juce::MemoryBlock savedState;
+    processor.getStateInformation (savedState);
+    const auto savedXml = juce::AudioProcessor::getXmlFromBinary (savedState.getData(), int (savedState.getSize()));
+    check (savedXml != nullptr && savedXml->hasTagName ("EZChordsAndHarmony"),
+           "Saved state uses the new product identifier");
+    processor.setPreviewSound (PreviewPlayback::Sound::soft);
     processor.prepareToPlay (48000, 128);
-    ChordSuggesterAudioProcessorEditor editor (processor);
+    EZChordsAndHarmonyAudioProcessorEditor editor (processor);
     check (history (editor).getText() == "C", "Starting chord recorded once");
     editor.mouseDown (event (editor, 1));
     check (history (editor).getText() == "C", "UI preview excluded from history");
@@ -238,7 +255,7 @@ int main()
             choice->onChange();
         }
     check (! button (editor, "Play").isEnabled(), "Scale change invalidates phrase");
-    ChordSuggesterAudioProcessorEditor reopened (processor);
+    EZChordsAndHarmonyAudioProcessorEditor reopened (processor);
     check (history (reopened).getText() == "C", "New editor resets prototype history");
     // Dragging a suggestion onto "Your chord" selects it, like a double-click; letting go elsewhere does nothing.
     const juce::Point<float> rowPoint { 600.0f, 150.0f };

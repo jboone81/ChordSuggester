@@ -263,7 +263,7 @@ void RoundedKeySelectorLookAndFeel::drawComboBox (juce::Graphics& g, int width, 
 }
 
 //==============================================================================
-ChordSuggesterAudioProcessorEditor::ChordSuggesterAudioProcessorEditor (ChordSuggesterAudioProcessor& p)
+EZChordsAndHarmonyAudioProcessorEditor::EZChordsAndHarmonyAudioProcessorEditor (EZChordsAndHarmonyAudioProcessor& p)
     : AudioProcessorEditor (&p), audioProcessor (p), midiKeyboard (p.getMidiKeyboardState())
 {
     // Work out the first set of suggestions for the starting chord.
@@ -430,7 +430,7 @@ ChordSuggesterAudioProcessorEditor::ChordSuggesterAudioProcessorEditor (ChordSug
     setSize (1160, 760);
 }
 
-ChordSuggesterAudioProcessorEditor::~ChordSuggesterAudioProcessorEditor()
+EZChordsAndHarmonyAudioProcessorEditor::~EZChordsAndHarmonyAudioProcessorEditor()
 {
     if (explanationBox != nullptr)
     {
@@ -441,13 +441,13 @@ ChordSuggesterAudioProcessorEditor::~ChordSuggesterAudioProcessorEditor()
     audioProcessor.stopPreview();
 }
 
-int ChordSuggesterAudioProcessorEditor::barCount() const { return std::max (1, barsChoice.getSelectedId()); }
-double ChordSuggesterAudioProcessorEditor::gridSize() const
+int EZChordsAndHarmonyAudioProcessorEditor::barCount() const { return std::max (1, barsChoice.getSelectedId()); }
+double EZChordsAndHarmonyAudioProcessorEditor::gridSize() const
 {
     return timingChoice.getSelectedId() == 3 ? 0.25 : timingChoice.getSelectedId() == 2 ? 0.5 : 1.0;
 }
 
-void ChordSuggesterAudioProcessorEditor::stopMelody()
+void EZChordsAndHarmonyAudioProcessorEditor::stopMelody()
 {
     endProgressionPlayback (false);
     audioProcessor.stopPreview();
@@ -456,7 +456,7 @@ void ChordSuggesterAudioProcessorEditor::stopMelody()
     playButton.setButtonText ("Play");
 }
 
-void ChordSuggesterAudioProcessorEditor::timerCallback()
+void EZChordsAndHarmonyAudioProcessorEditor::timerCallback()
 {
     // Follow the progression playback: highlight the chord that's sounding and show it on the keyboard.
     if (progressionPlaying)
@@ -486,7 +486,7 @@ void ChordSuggesterAudioProcessorEditor::timerCallback()
         soundChoice.setSelectedId (int (audioProcessor.getPreviewSound()) + 1, juce::dontSendNotification);
 }
 
-void ChordSuggesterAudioProcessorEditor::switchTab (bool melodyView)
+void EZChordsAndHarmonyAudioProcessorEditor::switchTab (bool melodyView)
 {
     showingMelody = melodyView;
     keySelector.setVisible (! showingMelody);
@@ -508,7 +508,7 @@ void ChordSuggesterAudioProcessorEditor::switchTab (bool melodyView)
     repaint();
 }
 
-void ChordSuggesterAudioProcessorEditor::invalidatePhrase (bool stopPlayback)
+void EZChordsAndHarmonyAudioProcessorEditor::invalidatePhrase (bool stopPlayback)
 {
     if (stopPlayback) stopMelody();
     phrase.notes.clear();
@@ -520,7 +520,7 @@ void ChordSuggesterAudioProcessorEditor::invalidatePhrase (bool stopPlayback)
     playButton.setEnabled (false);
 }
 
-void ChordSuggesterAudioProcessorEditor::refreshMelody (bool stopPlayback)
+void EZChordsAndHarmonyAudioProcessorEditor::refreshMelody (bool stopPlayback)
 {
     selectedChip = -1;
     scaleEstimate = melody::estimate (progression.all());
@@ -540,7 +540,7 @@ void ChordSuggesterAudioProcessorEditor::refreshMelody (bool stopPlayback)
     repaint();
 }
 
-void ChordSuggesterAudioProcessorEditor::toggleProgressionPlayback()
+void EZChordsAndHarmonyAudioProcessorEditor::toggleProgressionPlayback()
 {
     if (progressionPlaying)
     {
@@ -557,7 +557,7 @@ void ChordSuggesterAudioProcessorEditor::toggleProgressionPlayback()
     playProgressionButton.setButtonText ("Stop");
 }
 
-void ChordSuggesterAudioProcessorEditor::endProgressionPlayback (bool stopAudio)
+void EZChordsAndHarmonyAudioProcessorEditor::endProgressionPlayback (bool stopAudio)
 {
     if (! progressionPlaying)
         return;
@@ -570,19 +570,19 @@ void ChordSuggesterAudioProcessorEditor::endProgressionPlayback (bool stopAudio)
     repaint();
 }
 
-void ChordSuggesterAudioProcessorEditor::confirmChord (const chords::Chord& chord)
+void EZChordsAndHarmonyAudioProcessorEditor::confirmChord (const chords::Chord& chord)
 {
     setCurrentChord (chord);
     progression.confirm (currentChord);
     refreshMelody (false);
 }
 
-bool ChordSuggesterAudioProcessorEditor::isChordDropTarget (juce::Point<int> position) const
+bool EZChordsAndHarmonyAudioProcessorEditor::isChordDropTarget (juce::Point<int> position) const
 {
     return currentChordBounds().contains (position) || progressionBounds().contains (position);
 }
 
-void ChordSuggesterAudioProcessorEditor::undoLastChord()
+void EZChordsAndHarmonyAudioProcessorEditor::undoLastChord()
 {
     if (! progression.removeLast())
         return;
@@ -592,13 +592,13 @@ void ChordSuggesterAudioProcessorEditor::undoLastChord()
     refreshMelody();
 }
 
-melody::Scale ChordSuggesterAudioProcessorEditor::selectedScale() const
+melody::Scale EZChordsAndHarmonyAudioProcessorEditor::selectedScale() const
 {
     const int id = scaleChoice.getSelectedId();
     return id <= 1 ? scaleEstimate.best : melody::Scale { (id - 2) % 12, id >= 14 };
 }
 
-void ChordSuggesterAudioProcessorEditor::paintMelody (juce::Graphics& g)
+void EZChordsAndHarmonyAudioProcessorEditor::paintMelody (juce::Graphics& g)
 {
     g.setColour (juce::Colour (0xffa7afbc));
     g.setFont (juce::FontOptions (17.0f));
@@ -625,7 +625,7 @@ void ChordSuggesterAudioProcessorEditor::paintMelody (juce::Graphics& g)
 }
 
 //==============================================================================
-void ChordSuggesterAudioProcessorEditor::setCurrentChord (const chords::Chord& newChord)
+void EZChordsAndHarmonyAudioProcessorEditor::setCurrentChord (const chords::Chord& newChord)
 {
     // Copy first: newChord may be one of the suggestions we are about to replace.
     const chords::Chord chosen = newChord;
@@ -638,7 +638,7 @@ void ChordSuggesterAudioProcessorEditor::setCurrentChord (const chords::Chord& n
     repaint();
 }
 
-void ChordSuggesterAudioProcessorEditor::updateMoreChords()
+void EZChordsAndHarmonyAudioProcessorEditor::updateMoreChords()
 {
     moreChords.clear (juce::dontSendNotification);
     moreChordOptions.clear();
@@ -695,7 +695,7 @@ void ChordSuggesterAudioProcessorEditor::updateMoreChords()
     }
 }
 
-void ChordSuggesterAudioProcessorEditor::chooseMoreChord()
+void EZChordsAndHarmonyAudioProcessorEditor::chooseMoreChord()
 {
     const int id = moreChords.getSelectedId();
     if (id < 1 || id > (int) moreChordOptions.size())
@@ -711,7 +711,7 @@ void ChordSuggesterAudioProcessorEditor::chooseMoreChord()
     refreshMelody (false);
 }
 
-void ChordSuggesterAudioProcessorEditor::updateKeySelection()
+void EZChordsAndHarmonyAudioProcessorEditor::updateKeySelection()
 {
     const int selectedId = keySelector.getSelectedId();
     if (selectedId < 1 || selectedId > 12)
@@ -724,22 +724,22 @@ void ChordSuggesterAudioProcessorEditor::updateKeySelection()
     repaint();
 }
 
-juce::Rectangle<int> ChordSuggesterAudioProcessorEditor::currentChordBounds() const
+juce::Rectangle<int> EZChordsAndHarmonyAudioProcessorEditor::currentChordBounds() const
 {
     return { 24, 120, leftColumnWidth - 48, 148 };
 }
 
-juce::Rectangle<int> ChordSuggesterAudioProcessorEditor::transitionBounds() const
+juce::Rectangle<int> EZChordsAndHarmonyAudioProcessorEditor::transitionBounds() const
 {
     return { 24, 294, leftColumnWidth - 48, 96 };
 }
 
-juce::Rectangle<int> ChordSuggesterAudioProcessorEditor::progressionBounds() const
+juce::Rectangle<int> EZChordsAndHarmonyAudioProcessorEditor::progressionBounds() const
 {
     return { 24, 440, leftColumnWidth - 48, getHeight() - 112 - 30 - 66 - 440 };
 }
 
-void ChordSuggesterAudioProcessorEditor::paintProgression (juce::Graphics& g)
+void EZChordsAndHarmonyAudioProcessorEditor::paintProgression (juce::Graphics& g)
 {
     const auto area = progressionBounds();
     g.setColour (secondaryText);
@@ -830,7 +830,7 @@ void ChordSuggesterAudioProcessorEditor::paintProgression (juce::Graphics& g)
                 area.reduced (12, 6).removeFromBottom (18), juce::Justification::centredLeft);
 }
 
-std::vector<ChordSuggesterAudioProcessorEditor::ProgressionChip> ChordSuggesterAudioProcessorEditor::progressionChips() const
+std::vector<EZChordsAndHarmonyAudioProcessorEditor::ProgressionChip> EZChordsAndHarmonyAudioProcessorEditor::progressionChips() const
 {
     // Chords as chips with arrows between, wrapping onto new lines. If they don't all
     // fit, the oldest are left out and a "..." chip stands in for them.
@@ -878,7 +878,7 @@ std::vector<ChordSuggesterAudioProcessorEditor::ProgressionChip> ChordSuggesterA
     return chips;
 }
 
-int ChordSuggesterAudioProcessorEditor::progressionChipAt (juce::Point<int> position) const
+int EZChordsAndHarmonyAudioProcessorEditor::progressionChipAt (juce::Point<int> position) const
 {
     for (const auto& chip : progressionChips())
         if (chip.index >= 0 && chip.bounds.contains (position))
@@ -886,12 +886,12 @@ int ChordSuggesterAudioProcessorEditor::progressionChipAt (juce::Point<int> posi
     return -1;
 }
 
-juce::Rectangle<int> ChordSuggesterAudioProcessorEditor::chipDeleteBounds (const ProgressionChip& chip) const
+juce::Rectangle<int> EZChordsAndHarmonyAudioProcessorEditor::chipDeleteBounds (const ProgressionChip& chip) const
 {
     return juce::Rectangle<int> (18, 18).withCentre ({ chip.bounds.getRight() - 1, chip.bounds.getY() + 1 });
 }
 
-bool ChordSuggesterAudioProcessorEditor::selectedChipDeleteContains (juce::Point<int> position) const
+bool EZChordsAndHarmonyAudioProcessorEditor::selectedChipDeleteContains (juce::Point<int> position) const
 {
     if (selectedChip < 0 || progression.all().size() <= 1)
         return false;
@@ -901,7 +901,7 @@ bool ChordSuggesterAudioProcessorEditor::selectedChipDeleteContains (juce::Point
     return false;
 }
 
-void ChordSuggesterAudioProcessorEditor::deleteProgressionChord (int index)
+void EZChordsAndHarmonyAudioProcessorEditor::deleteProgressionChord (int index)
 {
     const bool wasLast = index == (int) progression.all().size() - 1;
     if (index < 0 || ! progression.removeAt ((size_t) index))
@@ -914,7 +914,7 @@ void ChordSuggesterAudioProcessorEditor::deleteProgressionChord (int index)
     refreshMelody();
 }
 
-void ChordSuggesterAudioProcessorEditor::replaceProgressionChord (int index, const chords::Chord& chord)
+void EZChordsAndHarmonyAudioProcessorEditor::replaceProgressionChord (int index, const chords::Chord& chord)
 {
     if (index < 0 || ! progression.replaceAt ((size_t) index, chord))
         return;
@@ -929,7 +929,7 @@ void ChordSuggesterAudioProcessorEditor::replaceProgressionChord (int index, con
     audioProcessor.previewChord (chord);
 }
 
-void ChordSuggesterAudioProcessorEditor::updateCursor (juce::Point<int> position)
+void EZChordsAndHarmonyAudioProcessorEditor::updateCursor (juce::Point<int> position)
 {
     if (showingMelody) return;
     const bool clickable = rowAt (position) >= 0 || currentChordBounds().contains (position)
@@ -939,7 +939,7 @@ void ChordSuggesterAudioProcessorEditor::updateCursor (juce::Point<int> position
     setMouseCursor (clickable ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
 }
 
-juce::Rectangle<int> ChordSuggesterAudioProcessorEditor::rowBounds (int index) const
+juce::Rectangle<int> EZChordsAndHarmonyAudioProcessorEditor::rowBounds (int index) const
 {
     const int left = leftColumnWidth + 28;
     const int top = 114;
@@ -950,7 +950,7 @@ juce::Rectangle<int> ChordSuggesterAudioProcessorEditor::rowBounds (int index) c
     return { left, top + index * (rowHeight + gap), getWidth() - left - 24, rowHeight };
 }
 
-int ChordSuggesterAudioProcessorEditor::rowAt (juce::Point<int> position) const
+int EZChordsAndHarmonyAudioProcessorEditor::rowAt (juce::Point<int> position) const
 {
     for (int i = 0; i < (int) suggestions.size(); ++i)
         if (rowBounds (i).contains (position))
@@ -959,7 +959,7 @@ int ChordSuggesterAudioProcessorEditor::rowAt (juce::Point<int> position) const
     return -1;
 }
 
-juce::Rectangle<int> ChordSuggesterAudioProcessorEditor::explainButtonBounds (int index) const
+juce::Rectangle<int> EZChordsAndHarmonyAudioProcessorEditor::explainButtonBounds (int index) const
 {
     const auto row = rowBounds (index);
     const int width = 104, height = 22;
@@ -972,7 +972,7 @@ juce::Rectangle<int> ChordSuggesterAudioProcessorEditor::explainButtonBounds (in
     return { row.getRight() - 124 - width, row.getCentreY() - height / 2, width, height };
 }
 
-int ChordSuggesterAudioProcessorEditor::explainButtonAt (juce::Point<int> position) const
+int EZChordsAndHarmonyAudioProcessorEditor::explainButtonAt (juce::Point<int> position) const
 {
     for (int i = 0; i < (int) suggestions.size(); ++i)
         if (explainButtonBounds (i).contains (position))
@@ -981,7 +981,7 @@ int ChordSuggesterAudioProcessorEditor::explainButtonAt (juce::Point<int> positi
     return -1;
 }
 
-void ChordSuggesterAudioProcessorEditor::showExplanation (int index)
+void EZChordsAndHarmonyAudioProcessorEditor::showExplanation (int index)
 {
     if (index < 0 || index >= (int) suggestions.size())
         return;
@@ -992,7 +992,7 @@ void ChordSuggesterAudioProcessorEditor::showExplanation (int index)
     explanationBox = &juce::CallOutBox::launchAsynchronously (std::move (panel), explainButtonBounds (index), this);
 }
 
-juce::Rectangle<int> ChordSuggesterAudioProcessorEditor::numeralsHelpBounds() const
+juce::Rectangle<int> EZChordsAndHarmonyAudioProcessorEditor::numeralsHelpBounds() const
 {
     // Just to the right of the "Your progression" heading.
     const auto area = progressionBounds();
@@ -1001,7 +1001,7 @@ juce::Rectangle<int> ChordSuggesterAudioProcessorEditor::numeralsHelpBounds() co
     return { area.getX() + headingWidth + 12, area.getY() - 28, 86, 20 };
 }
 
-void ChordSuggesterAudioProcessorEditor::showNumeralsHelp()
+void EZChordsAndHarmonyAudioProcessorEditor::showNumeralsHelp()
 {
     // The wording comes from chords::explainRomanNumerals in ChordExplain.h, using the chosen key for its examples.
     auto panel = std::make_unique<ExplanationPanel> (chords::explainRomanNumerals (keyRoot));
@@ -1009,12 +1009,12 @@ void ChordSuggesterAudioProcessorEditor::showNumeralsHelp()
 }
 
 //==============================================================================
-void ChordSuggesterAudioProcessorEditor::paint (juce::Graphics& g)
+void EZChordsAndHarmonyAudioProcessorEditor::paint (juce::Graphics& g)
 {
     g.fillAll (juce::Colour (0xff14171c));
     g.setColour (juce::Colours::white);
     g.setFont (juce::FontOptions (24.0f, juce::Font::bold));
-    g.drawText ("ChordSuggester", 24, 9, 235, 36, juce::Justification::centredLeft);   // sits a little high to leave room for the Sound menu below it
+    g.drawFittedText ("EZ Chords & Harmony", 24, 18, 235, 36, juce::Justification::centredLeft, 1);
     g.setColour (juce::Colour (0xff343a44));
     g.drawHorizontalLine (71, 0.0f, float (getWidth()));
     g.setColour (juce::Colour (0xff2563eb));
@@ -1205,7 +1205,7 @@ void ChordSuggesterAudioProcessorEditor::paint (juce::Graphics& g)
     }
 }
 
-void ChordSuggesterAudioProcessorEditor::resized()
+void EZChordsAndHarmonyAudioProcessorEditor::resized()
 {
     keySelector.setBounds (getWidth() - 200, 22, 176, 32);
     moreChords.setBounds (getWidth() - 264, 76, 240, 32);
@@ -1236,7 +1236,7 @@ void ChordSuggesterAudioProcessorEditor::resized()
 }
 
 //==============================================================================
-void ChordSuggesterAudioProcessorEditor::mouseDown (const juce::MouseEvent& event)
+void EZChordsAndHarmonyAudioProcessorEditor::mouseDown (const juce::MouseEvent& event)
 {
     if (showingMelody || ! event.mods.isLeftButtonDown() || event.getNumberOfClicks() != 1)
         return;
@@ -1306,7 +1306,7 @@ void ChordSuggesterAudioProcessorEditor::mouseDown (const juce::MouseEvent& even
     updateCursor (event.getPosition());
 }
 
-void ChordSuggesterAudioProcessorEditor::mouseDoubleClick (const juce::MouseEvent& event)
+void EZChordsAndHarmonyAudioProcessorEditor::mouseDoubleClick (const juce::MouseEvent& event)
 {
     if (showingMelody || ! event.mods.isLeftButtonDown() || event.getNumberOfClicks() != 2)
         return;
@@ -1319,7 +1319,7 @@ void ChordSuggesterAudioProcessorEditor::mouseDoubleClick (const juce::MouseEven
     updateCursor (event.getPosition());
 }
 
-void ChordSuggesterAudioProcessorEditor::mouseDrag (const juce::MouseEvent& event)
+void EZChordsAndHarmonyAudioProcessorEditor::mouseDrag (const juce::MouseEvent& event)
 {
     if (showingMelody || dragRow < 0)
         return;
@@ -1334,7 +1334,7 @@ void ChordSuggesterAudioProcessorEditor::mouseDrag (const juce::MouseEvent& even
     repaint();
 }
 
-bool ChordSuggesterAudioProcessorEditor::keyPressed (const juce::KeyPress& key)
+bool EZChordsAndHarmonyAudioProcessorEditor::keyPressed (const juce::KeyPress& key)
 {
     if (showingMelody || selectedChip < 0)
         return false;
@@ -1353,7 +1353,7 @@ bool ChordSuggesterAudioProcessorEditor::keyPressed (const juce::KeyPress& key)
     return false;
 }
 
-void ChordSuggesterAudioProcessorEditor::mouseUp (const juce::MouseEvent& event)
+void EZChordsAndHarmonyAudioProcessorEditor::mouseUp (const juce::MouseEvent& event)
 {
     const int row = dragRow;
     const bool hasChord = draggingChord && row >= 0 && row < (int) suggestions.size();
@@ -1380,7 +1380,7 @@ void ChordSuggesterAudioProcessorEditor::mouseUp (const juce::MouseEvent& event)
     repaint();
 }
 
-void ChordSuggesterAudioProcessorEditor::mouseMove (const juce::MouseEvent& event)
+void EZChordsAndHarmonyAudioProcessorEditor::mouseMove (const juce::MouseEvent& event)
 {
     const int row = showingMelody ? -1 : rowAt (event.getPosition());
     const int explain = showingMelody ? -1 : explainButtonAt (event.getPosition());
@@ -1396,7 +1396,7 @@ void ChordSuggesterAudioProcessorEditor::mouseMove (const juce::MouseEvent& even
     }
 }
 
-void ChordSuggesterAudioProcessorEditor::mouseExit (const juce::MouseEvent&)
+void EZChordsAndHarmonyAudioProcessorEditor::mouseExit (const juce::MouseEvent&)
 {
     setMouseCursor (juce::MouseCursor::NormalCursor);
     if (hoveredRow != -1 || hoveredExplain != -1 || hoveredNumeralsHelp)
@@ -1445,7 +1445,7 @@ juce::String playedNoteNames (std::vector<int> notes, bool useFlats)
 }
 }
 
-bool ChordSuggesterAudioProcessorEditor::isInterestedInFileDrag (const juce::StringArray& files)
+bool EZChordsAndHarmonyAudioProcessorEditor::isInterestedInFileDrag (const juce::StringArray& files)
 {
     for (const auto& path : files)
         if (isMidiFile (path))
@@ -1454,19 +1454,19 @@ bool ChordSuggesterAudioProcessorEditor::isInterestedInFileDrag (const juce::Str
     return false;
 }
 
-void ChordSuggesterAudioProcessorEditor::fileDragEnter (const juce::StringArray&, int, int)
+void EZChordsAndHarmonyAudioProcessorEditor::fileDragEnter (const juce::StringArray&, int, int)
 {
     midiDragHovering = true;
     repaint();
 }
 
-void ChordSuggesterAudioProcessorEditor::fileDragExit (const juce::StringArray&)
+void EZChordsAndHarmonyAudioProcessorEditor::fileDragExit (const juce::StringArray&)
 {
     midiDragHovering = false;
     repaint();
 }
 
-void ChordSuggesterAudioProcessorEditor::filesDropped (const juce::StringArray& files, int, int)
+void EZChordsAndHarmonyAudioProcessorEditor::filesDropped (const juce::StringArray& files, int, int)
 {
     midiDragHovering = false;
 
