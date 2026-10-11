@@ -76,7 +76,7 @@ Then, from the project folder:
 ```
 cmake -B build -DCMAKE_BUILD_TYPE=Debug
 cmake --build build --target EZChordsAndHarmony_Standalone -j 8
-open "build/EZChordsAndHarmony_artefacts/Debug/Standalone/EZ Chords & Harmony.app"
+open "build/EZChordsAndHarmony_artefacts/Debug/Standalone/EZ Chords and Harmony.app"
 ```
 
 ### Linux
@@ -96,7 +96,7 @@ Then, from the project folder:
 ```
 cmake -B build -DCMAKE_BUILD_TYPE=Debug
 cmake --build build --target EZChordsAndHarmony_Standalone -j 8
-"./build/EZChordsAndHarmony_artefacts/Debug/Standalone/EZ Chords & Harmony"
+"./build/EZChordsAndHarmony_artefacts/Debug/Standalone/EZ Chords and Harmony"
 ```
 
 A yellow "Audio input is muted to avoid feedback loop" bar is normal; chord previews still play. Use **Settings...** to pick an audio device.
@@ -113,7 +113,7 @@ Open the **Developer PowerShell for VS 2022** from the Start menu, go to the pro
 ```
 cmake -B build -DJUCE_PATH="$env:USERPROFILE\Downloads\JUCE"
 cmake --build build --config Debug --target EZChordsAndHarmony_Standalone
-& ".\build\EZChordsAndHarmony_artefacts\Debug\Standalone\EZ Chords & Harmony.exe"
+& ".\build\EZChordsAndHarmony_artefacts\Debug\Standalone\EZ Chords and Harmony.exe"
 ```
 
 Change the `JUCE_PATH` value if you put JUCE somewhere other than your Downloads folder. Visual Studio picks the build type at build time, which is why `--config Debug` is on the build command instead of the configure command.

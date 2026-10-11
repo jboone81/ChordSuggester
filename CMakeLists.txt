@@ -18,7 +18,12 @@
        PLUGIN_MANUFACTURER_CODE Chsg
        PLUGIN_CODE Chs1
        FORMATS VST3 Standalone
-       PRODUCT_NAME "EZ Chords & Harmony")
+       # The name shown in the DAW and in the window title.
+       PLUGIN_NAME "EZ Chords & Harmony"
+       # The name of the built files (.app, .vst3). It must not contain "&": the build runs
+       # shell commands on these file paths, and "&" cuts a shell command in two, which made
+       # the VST3 build fail with "Error 127".
+       PRODUCT_NAME "EZ Chords and Harmony")
 
    juce_generate_juce_header(EZChordsAndHarmony)
 
