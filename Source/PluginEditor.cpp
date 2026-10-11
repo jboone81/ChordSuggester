@@ -346,6 +346,12 @@ ChordSuggesterAudioProcessorEditor::ChordSuggesterAudioProcessorEditor (ChordSug
     {
         return midi_writer::writePhraseToTempFile (phrase, backingButton.getToggleState());
     };
+
+    // The same for the Chords tab: dragging this handle writes "Your progression" to a MIDI
+    // file, one chord per bar, and hands it to the DAW.
+    addAndMakeVisible (chordsDragHandle);
+    chordsDragHandle.label = "Drag chords to DAW";
+    chordsDragHandle.createFile = [this] { return midi_writer::writeChordsToTempFile (progression.all()); };
     progressionDisplay.setMultiLine (false);
     progressionDisplay.setReadOnly (true);
     progressionDisplay.setColour (juce::TextEditor::backgroundColourId, juce::Colour (0xff20252d));
@@ -504,6 +510,7 @@ void ChordSuggesterAudioProcessorEditor::switchTab (bool melodyView)
     progressionDisplay.setVisible (showingMelody);
     pianoRoll.setVisible (showingMelody);
     melodyDragHandle.setVisible (showingMelody);
+    chordsDragHandle.setVisible (! showingMelody);
     setMouseCursor (juce::MouseCursor::NormalCursor);
     repaint();
 }
@@ -1224,6 +1231,8 @@ void ChordSuggesterAudioProcessorEditor::resized()
     scaleChoice.setBounds (getWidth() - 285, 22, 261, 32);
     generateButton.setBounds (200, 86, 180, 36);
     melodyDragHandle.setBounds (392, 86, 172, 36);
+    // Right-hand end of the "MIDI keyboard" heading row, just under the progression's buttons.
+    chordsDragHandle.setBounds (leftColumnWidth - 24 - 180, keyboardArea.getY() - 31, 180, 26);
     clearNotesButton.setBounds (576, 86, 130, 36);
     barsChoice.setBounds (getWidth() - 325, 86, 85, 36);
     timingChoice.setBounds (getWidth() - 150, 86, 126, 36);

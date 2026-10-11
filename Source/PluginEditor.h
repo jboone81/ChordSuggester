@@ -204,6 +204,7 @@ private:
     juce::TextEditor progressionDisplay;
     bool melodyPlaying = false, seenPlayhead = false;
     MidiDragHandle melodyDragHandle;   // on the Melody tab: drag the suggested melody out to a DAW track
+    MidiDragHandle chordsDragHandle;   // on the Chords tab: drag "Your progression" out to a DAW track
     bool midiDragHovering = false;   // true while a MIDI file is being dragged over the window
     juce::String dropMessage;        // shown under the chord after a drop, e.g. "From clip.mid"
 
