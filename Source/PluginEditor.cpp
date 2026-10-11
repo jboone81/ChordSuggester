@@ -1716,7 +1716,16 @@ void EZChordsAndHarmonyAudioProcessorEditor::filesDropped (const juce::StringArr
 
         if (chords::chordFromNotes (played, keyRoot, dropped))
         {
+            // "Your progression" follows the chord you have. While the progression is still
+            // just its starting chord, the dropped chord takes its place; after that, the
+            // dropped chord is added to the end (unless it is the chord already there).
+            const bool sameAsLast = chords::sameNotes (dropped, progression.all().back());
             setCurrentChord (dropped);
+            if (progression.all().size() == 1)
+                progression.reset (currentChord);
+            else if (! sameAsLast)
+                progression.confirm (currentChord);
+            refreshMelody (false);
 
             // Play it and light up the keyboard, the same as clicking "Your chord".
             midiKeyboard.showChordPlayback (currentChord.notes);
