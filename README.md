@@ -134,6 +134,11 @@ These check simultaneous notes and root-position voicing, preview/transition dur
 
 Melody tests also check scale estimates, bar filling, subdivisions, editing constraints, rests, backing chords, looping, all 128 sixteenth notes, and concurrent playback requests. Plugin interaction tests cover editing gestures, confirmation/history, tab switching, phrase invalidation, audio/MIDI passthrough, and render empty/four-bar/eight-bar piano-roll snapshots into the build folder.
 
+## Working on the code as a team
+
+- **Line endings are handled by git.** `.gitattributes` stores every text file with LF line endings, whatever editor or computer saved it. Mixed line endings used to make git see whole files as changed, which turned merges into conflicts and broke `main`. Nothing to do on your side; if git ever shows a file as entirely changed after a pull, run `git add --renormalize .` and commit.
+- **Every pull request is built automatically.** `.github/workflows/build.yml` builds the VST3 plugin and the standalone app on a Mac with JUCE 9.0.3 and runs the chord and melody tests, for every pull request and every push to `main`. A red cross on a pull request means it doesn't build or a test fails, so fix it before merging. Results are on the repository's **Actions** tab.
+
 ## Project layout
 
 - `CMakeLists.txt`: the build settings (plugin name, formats, MIDI options).

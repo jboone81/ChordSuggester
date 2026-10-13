@@ -1,0 +1,24 @@
+# Line endings: every text file is stored with LF (Unix) line endings, on every computer.
+#
+# Without this, different editors saved the same file with CRLF (Windows) or LF endings, so
+# git saw every line as changed and merges became whole-file conflicts. That is what broke
+# main several times. With this file, git converts line endings automatically when files are
+# committed and checked out, so a file looks the same to git whoever last saved it.
+* text=auto eol=lf
+
+# Files that are not text. Git never changes their bytes or tries to merge them line by line.
+*.gz        binary
+*.zip       binary
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.pdf       binary
+*.xlsx      binary
+*.mid       binary
+*.midi      binary
+*.musicloop binary
+*.wav       binary
+*.aif       binary
+*.aiff      binary
+*.mp3       binary
