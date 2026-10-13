@@ -1,0 +1,49 @@
+name: Build
+
+# Builds the plugin on a Mac and runs the chord and melody tests:
+#   - for every pull request, so a change that breaks the build is caught before it is merged
+#   - for every push to main, so a broken main is noticed straight away
+# The result shows as a green tick or a red cross on the pull request and on each commit.
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+  workflow_dispatch:   # also lets you start a build by hand from the Actions tab
+
+# A newer push to the same branch or pull request cancels the build that is still running.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  macos:
+    name: macOS build and tests
+    runs-on: macos-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out the project
+        uses: actions/checkout@v5
+
+      - name: Download JUCE
+        # The same JUCE version the team builds with.
+        run: git clone --depth 1 --branch 9.0.3 https://github.com/juce-framework/JUCE.git "$RUNNER_TEMP/JUCE"
+
+      - name: Configure
+        # The same build type as the README's commands. The plugin isn't copied into the
+        # runner's plugin folder, and the tests are switched on.
+        run: >
+          cmake -B build -DCMAKE_BUILD_TYPE=Debug
+          -DJUCE_PATH="$RUNNER_TEMP/JUCE"
+          -DEZCHORDSANDHARMONY_COPY_PLUGIN_AFTER_BUILD=OFF
+          -DEZCHORDSANDHARMONY_BUILD_TESTS=ON
+
+      - name: Build the VST3 plugin and the standalone app
+        run: cmake --build build --target EZChordsAndHarmony_VST3 EZChordsAndHarmony_Standalone --parallel 4
+
+      - name: Build and run the chord and melody tests
+        # PluginInteractionTests is left out for now: it drives the plugin window, which has
+        # changed a lot since it was written. Add it here once it passes on your own Mac.
+        run: |
+          cmake --build build --target ChordPreviewTests MelodyTests --parallel 4
+          ctest --test-dir build -R "ChordPreviewTests|MelodyTests" --output-on-failure
